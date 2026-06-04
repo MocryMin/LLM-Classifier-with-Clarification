@@ -13,7 +13,7 @@ import traceback
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_PROJECT_ROOT, 'src'))
 
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -22,6 +22,13 @@ from conversation_manager import (
     list_conversations, create_conversation, get_conversation,
     save_conversation, delete_conversation,
 )
+
+from workspace_manager import (
+    get_workspace_path, set_workspace_path,
+    import_to_staging, list_staging, get_staging_file,
+    delete_staging_file, list_persisted, persist_file,
+)
+from parser_registry import get_parser_for_content, list_parsers
 
 app = FastAPI(title="智能管家 Chat Playground", version="0.1.0")
 
@@ -32,6 +39,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    from workspace_manager import cleanup_staging
+    cleanup_staging()
 
 
 class ChatRequest(BaseModel):
@@ -135,6 +148,93 @@ async def api_delete_conversation(conv_id: str):
         from fastapi.responses import JSONResponse
         return JSONResponse({"error": "Not found"}, status_code=404)
     return {"status": "ok"}
+
+
+# ─── Workspace config ──────────────────────────────────────────
+@app.get("/api/workspace/config")
+async def api_get_workspace_config():
+    return {"path": str(get_workspace_path())}
+
+
+class WorkspaceConfigBody(BaseModel):
+    path: str
+
+
+@app.put("/api/workspace/config")
+async def api_set_workspace_config(body: WorkspaceConfigBody):
+    set_workspace_path(body.path)
+    return {"path": str(get_workspace_path())}
+
+
+# ─── Staging ────────────────────────────────────────────────────
+@app.post("/api/workspace/import")
+async def api_import_to_staging(file: UploadFile = File(...)):
+    content = await file.read()
+    result = import_to_staging(file.filename or 'unknown', file.filename or 'unknown', content)
+    return result
+
+
+@app.get("/api/workspace/staging")
+async def api_list_staging():
+    return list_staging()
+
+
+@app.delete("/api/workspace/staging/{staging_id}")
+async def api_delete_staging(staging_id: str):
+    ok = delete_staging_file(staging_id)
+    if not ok:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    return {"status": "ok"}
+
+
+# ─── Persisted ──────────────────────────────────────────────────
+@app.get("/api/workspace/persisted")
+async def api_list_persisted():
+    return list_persisted()
+
+
+class PersistBody(BaseModel):
+    staging_id: str
+
+
+@app.post("/api/workspace/persist")
+async def api_persist_file(body: PersistBody):
+    return persist_file(body.staging_id)
+
+
+# ─── Parse ─────────────────────────────────────────────────────
+class ParseBody(BaseModel):
+    staging_id: str
+
+
+@app.post("/api/workspace/parse")
+async def api_parse_file(body: ParseBody):
+    staging_path = get_staging_file(body.staging_id)
+    if staging_path is None:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "Staging file not found"}, status_code=404)
+
+    raw = staging_path.read_text(encoding='utf-8')
+    ext = staging_path.suffix.lower()
+    parser = get_parser_for_content(raw, ext)
+
+    if parser is None:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": f"No parser found for {ext} files"}, status_code=400)
+
+    messages = parser.parse(raw)
+    return {
+        "format": parser.name,
+        "parser_used": parser.display_name,
+        "messages": messages,
+    }
+
+
+# ─── Parsers list ──────────────────────────────────────────────
+@app.get("/api/parsers")
+async def api_list_parsers():
+    return list_parsers()
 
 
 if __name__ == "__main__":
