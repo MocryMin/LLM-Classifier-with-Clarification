@@ -24,5 +24,4 @@ test/testL0/result.xlsx
 test/testL0/results/
 test/testL0/sample/
 test/testL0/generate_samples.py
-test/testL0/xlsx.py
 test/testL0/testL0.py

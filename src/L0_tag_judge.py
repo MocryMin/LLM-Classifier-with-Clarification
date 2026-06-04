@@ -1,7 +1,111 @@
+"""
+L0_tag_judge — 跨场景标记检测模块（L0 预处理层）
+================================================================
+
+功能：读入对话历史 messages，检测 5 种跨场景标记（叠加在业务路由之上）。
+
+标记类型：
+  ┌──────────┬────────────────────────────────┬──────────────┬──────────┐
+  │ 标记     │ 含义                           │ 检测方式     │ 返回值   │
+  ├──────────┼────────────────────────────────┼──────────────┼──────────┤
+  │ manual   │ 人工标记：用户 ≥2 次表达转人工  │ 逐轮计数     │ bool     │
+  │ angry    │ 愤怒/不满情绪概率               │ 判别性/SC    │ float    │
+  │ sad      │ 悲伤情绪概率                   │ 判别性/SC    │ float    │
+  │ urgent   │ 紧急语境概率                   │ 判别性/SC    │ float    │
+  │ non_biz  │ 非业务闲聊概率                 │ 判别性/SC    │ float    │
+  └──────────┴────────────────────────────────┴──────────────┴──────────┘
+
+检测优先级（高→低，命中后可选短路）：
+  manual → angry → urgent → sad → non_biz
+
+
+===== 入 口 接 口 ================================================
+
+  1. tag_judge(messages)  — 兼容旧接口，5 标签单次调用
+  2. tag_judge_v2(messages, ez_judge=0, k=5)  — 新接口，SC + 全并行
+
+-------------------------------------------------------------------
+  tag_judge(messages)
+-------------------------------------------------------------------
+  参数:
+    messages : list[dict]
+        OpenAI 格式消息列表，每项含 {"role": ..., "content": ...}
+        role 可为 "user" / "assistant" / "system"(默认忽略)
+
+  返回:
+    dict[str, bool|float]:
+        {
+            'manual':  bool,    # True=≥2次转人工意图
+            'angry':   float,   # 愤怒/不满概率 [0, 1]
+            'sad':     float,   # 悲伤概率 [0, 1]
+            'urgent':  float,   # 紧急概率 [0, 1]
+            'non_biz': float,   # 非业务闲聊概率 [0, 1]
+        }
+
+  API 调用次数: 4 + N (N=user消息数, manual逐轮, 计数器到2提前终止)
+
+-------------------------------------------------------------------
+  tag_judge_v2(messages, ez_judge=0, k=5)
+-------------------------------------------------------------------
+  参数:
+    messages : list[dict]
+        同上
+    ez_judge : int (默认 0)
+        0 = SC 验证模式（各标签 k 次独立判断 → 2σ离群剔除 → 鲁棒平均）
+        1 = 快速模式（各标签单次判断，与 tag_judge 行为一致但全并行）
+    k : int (默认 5)
+        SC 模式下的独立采样次数
+
+  返回:
+    dict[str, float]:
+        {
+            'manual':  float,   # 0.0 或 1.0
+            'angry':   float,   # 鲁棒平均概率 [0, 1]
+            'sad':     float,
+            'urgent':  float,
+            'non_biz': float,
+        }
+
+  SC 模式流程（以 angry 为例, k=5）:
+    并行发起 5 次 detect_tag(messages, 'angry')
+      → p1...p5
+      → 计算 μ, σ
+      → 剔除 |p - μ| > 2σ 的离群点
+      → 剩余值平均 → 最终 angry 概率
+
+  并行架构:
+    ┌ 外层 ThreadPoolExecutor(max_workers=5) ── 5 tags 并行 ──┐
+    │  manual  ── 串行逐轮 (counter=2 提前终止)                │
+    │  angry   ── [k 次并行] or 单次                           │
+    │  sad     ── [k 次并行] or 单次                           │
+    │  urgent  ── [k 次并行] or 单次                           │
+    │  non_biz ── [k 次并行] or 单次                           │
+    └──────────────────────────────────────────────────────────┘
+
+  API 调用次数:
+    快速模式: 5 次 (全并行)
+    SC 模式:   1 + 4×k 次 (全并行, k=5 时共 21 次)
+
+-------------------------------------------------------------------
+  决策建议
+-------------------------------------------------------------------
+  0.7 / 0.3 为 prompt 中约定的决策置信点：
+    - p ≥ 0.7  → 高置信命中，可直接触发对应处理逻辑
+    - p ≤ 0.3  → 高置信未命中，可按常规业务流程走
+    - 0.3 < p < 0.7 → 不确定区间，建议保守处理或交由上层再判断
+
+  调用方可据此将连续概率映射回离散决策：
+    def decide(prob):
+        return 1 if prob >= 0.7 else (0 if prob <= 0.3 else -1)  # -1=不确定
+
+================================================================
+"""
+
 import os
 import json
 import re
 import math
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from openai import OpenAI
 
@@ -197,11 +301,16 @@ def detect_manual_transfer(messages):
     """
     检测用户是否表达了 ≥2 次转人工/找真人/找领导的意图。
 
-    采用逐轮检测方案（Approach B）：
+    采用全并行逐轮检测方案：
       - 将对话按用户消息拆分为 N 轮
-      - 对第 i 轮，将第 1 ~ i 轮的全部对话上下文输入 LLM
-      - 询问 LLM：最新这一轮的用户消息是否表达了转人工意图
-      - 若命中，计数器 +1；计数器达到 2 时立即返回 True
+      - N 轮全部并行发射（不再串行等待）
+      - 共享计数器 (hits, done) + 锁保护
+      - 任意 future 完成时检查提前终止条件：
+          hits ≥ 2          → 返回 True  (已确认 ≥2 次)
+          hits + remaining < 2 → 返回 False (剩余轮次累加也不可能到 2)
+      - 提前返回时 cancel 所有未完成 future，executor shutdown(wait=False)
+
+    性能：N 轮串行 N×T → 并行 ≈ T（最慢一轮），长对话提升显著。
 
     Args:
         messages: list[dict], OpenAI 格式消息列表
@@ -210,27 +319,53 @@ def detect_manual_transfer(messages):
         bool: True = 命中人工标记（≥2次）, False = 未命中
     """
     user_indices = _get_user_round_bounds(messages)
+    total = len(user_indices)
 
-    if len(user_indices) < 2:
+    if total < 2:
         return False
 
     prompt_template = _load_prompt('manual')
-    counter = 0
 
-    for round_idx, user_idx in enumerate(user_indices, start=1):
+    # 共享状态（锁保护）
+    lock = threading.Lock()
+    hits = 0
+    done = 0
+
+    def _check_one_round(user_idx):
+        """单个轮次的检测闭包：构造上下文 → 调 LLM → 解析 → 返回 hit 布尔"""
         sub_messages = messages[:user_idx + 1]
         conversation = _format_messages(sub_messages)
         full_prompt = prompt_template.format(conversation=conversation)
-
         response = ask([{"role": "user", "content": full_prompt}])
         result = _parse_json_response(response)
+        return result.get('hit') == 1
 
-        if result.get('hit') == 1:
-            counter += 1
-            if counter >= 2:
-                return True
+    executor = ThreadPoolExecutor(max_workers=min(total, 8))
+    try:
+        futures = {executor.submit(_check_one_round, idx): idx for idx in user_indices}
 
-    return False
+        for future in as_completed(futures):
+            is_hit = future.result()
+
+            with lock:
+                done += 1
+                if is_hit:
+                    hits += 1
+
+                # 提前终止条件 1: 已命中 ≥2 次
+                if hits >= 2:
+                    return True
+
+                # 提前终止条件 2: 剩余 + 已有 < 2，不可能达标
+                remaining = total - done
+                if hits + remaining < 2:
+                    return False
+
+        return hits >= 2
+
+    finally:
+        # 提前返回时：cancel 未启动的 future，不等待运行中的
+        executor.shutdown(wait=False, cancel_futures=True)
 
 
 # ============================================================
