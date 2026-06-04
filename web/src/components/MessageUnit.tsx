@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Pencil, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import ControlInfoPanel from './ControlInfoPanel'
 import type { MessageUnit as MessageUnitType } from '@/types'
 import { useStore } from '@/store'
 import { cn } from '@/utils'
@@ -14,8 +15,10 @@ export default function MessageUnit({ unit, index }: Props) {
   const { editMessage, deleteMessage } = useStore()
   const [editing, setEditing] = useState(false)
   const [editValue, setEditValue] = useState(unit.message.content)
+  const [showControlInfo, setShowControlInfo] = useState(false)
 
   const isUser = unit.message.role === 'user'
+  const hasControlInfo = !isUser && !!unit.entranceResult
 
   const handleSaveEdit = () => {
     editMessage(unit.id, editValue)
@@ -23,10 +26,8 @@ export default function MessageUnit({ unit, index }: Props) {
   }
 
   const handleDoubleClick = () => {
-    if (isUser) {
-      setEditValue(unit.message.content)
-      setEditing(true)
-    }
+    setEditValue(unit.message.content)
+    setEditing(true)
   }
 
   return (
@@ -51,6 +52,15 @@ export default function MessageUnit({ unit, index }: Props) {
             {isUser ? '用户' : '小保'}
           </span>
           {unit.stale && <span className="text-xs text-yellow-500">已过期</span>}
+          {hasControlInfo && (
+            <button
+              onClick={() => setShowControlInfo(!showControlInfo)}
+              className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+            >
+              {showControlInfo ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              {showControlInfo ? '收起' : '展开'}控制信息
+            </button>
+          )}
         </div>
 
         {editing ? (
@@ -70,11 +80,16 @@ export default function MessageUnit({ unit, index }: Props) {
             {unit.message.content}
           </div>
         )}
+
+        {/* Control info panel */}
+        {hasControlInfo && showControlInfo && (
+          <ControlInfoPanel result={unit.entranceResult!} />
+        )}
       </div>
 
       {/* Hover actions */}
       <div className="absolute right-3 top-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        {isUser && !editing && (
+        {!editing && (
           <Button variant="ghost" size="icon" onClick={() => { setEditValue(unit.message.content); setEditing(true); }} title="编辑">
             <Pencil className="h-3.5 w-3.5" />
           </Button>
