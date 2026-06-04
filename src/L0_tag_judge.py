@@ -118,13 +118,13 @@ client = OpenAI(
 # 基础 LLM 调用
 # ============================================================
 
-def ask(messages, thE='disabled', max_retries=5):
+def ask(messages, thE='enabled', max_retries=5):
     """调用 DeepSeek API，带重试机制。返回 response.content 字符串。"""
     sign = 1
     retries = 0
     while sign and retries < max_retries:
         response = client.chat.completions.create(
-            model="deepseek-v4-pro",
+            model="deepseek-v4-flash",
             messages=messages,
             stream=False,
             max_tokens=100000,
