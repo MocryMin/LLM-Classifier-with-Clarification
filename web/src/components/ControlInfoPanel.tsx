@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ChevronDown, ChevronRight, Copy, HelpCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -73,9 +73,13 @@ function ValueDisplay({ value }: { value: unknown }) {
 }
 
 // ─── Single field row ──────────────────────────────────────────
-function ControlField({ field }: { field: FieldDef }) {
+function ControlField({ field, forceExpand }: { field: FieldDef; forceExpand?: boolean }) {
   const [expanded, setExpanded] = useState(false)
   const isComplex = typeof field.value === 'object' || (typeof field.value === 'string' && field.value.length > 80)
+
+  useEffect(() => {
+    if (forceExpand !== undefined) setExpanded(forceExpand);
+  }, [forceExpand]);
 
   const handleCopy = () => {
     const text = typeof field.value === 'string' ? field.value : formatJson(field.value)
@@ -145,7 +149,7 @@ export default function ControlInfoPanel({ result }: Props) {
       {/* Fields */}
       <div>
         {fields.map(f => (
-          <ControlField key={f.key} field={f} />
+          <ControlField key={f.key} field={f} forceExpand={allExpanded} />
         ))}
       </div>
     </div>

@@ -13,7 +13,7 @@ interface Props {
 }
 
 export default function MessageUnit({ unit, index }: Props) {
-  const { editMessage, deleteMessage, resendFromIndex, insertMessage, isLoading } = useStore()
+  const { editMessage, deleteMessage, resendFromIndex, insertMessage, isLoading, messages } = useStore()
   const [editing, setEditing] = useState(false)
   const [editValue, setEditValue] = useState(unit.message.content)
   const [showControlInfo, setShowControlInfo] = useState(false)
@@ -89,7 +89,7 @@ export default function MessageUnit({ unit, index }: Props) {
               <ControlInfoPanel result={unit.entranceResult!} />
             )}
 
-            {unit.stale && isUser && (
+            {isUser && (unit.stale || (index + 1 < messages.length && messages[index + 1]?.stale)) && (
               <div className="mt-2">
                 <Button variant="outline" size="sm" onClick={() => resendFromIndex(index + 1)} disabled={isLoading}>
                   <ArrowRight className="h-3.5 w-3.5 mr-1" />
@@ -123,8 +123,8 @@ export default function MessageUnit({ unit, index }: Props) {
           <Plus className="h-4 w-4" /> 在下面插入消息
         </ContextMenuItem>
         <ContextMenuSeparator />
-        {!isUser && unit.stale && (
-          <ContextMenuItem onClick={() => resendFromIndex(index)} disabled={isLoading}>
+        {((unit.stale) || (index + 1 < messages.length && messages[index + 1]?.stale)) && (
+          <ContextMenuItem onClick={() => resendFromIndex(index + (isUser ? 1 : 0))} disabled={isLoading}>
             <ArrowRight className="h-4 w-4" /> 从此处重新发送
           </ContextMenuItem>
         )}

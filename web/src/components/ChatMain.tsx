@@ -7,10 +7,7 @@ export default function ChatMain() {
   const { isLoading, progress, error } = useStore()
 
   const progressLabel = progress
-    ? progress.stage === 'l0_start' ? 'L0 标签检测中...'
-    : progress.stage === 'l1' ? 'L1 意图路由中...'
-    : progress.stage === 'escalation' ? '生成升级处置...'
-    : `${progress.stage}...`
+    ? '思考中...'
     : null
 
   return (

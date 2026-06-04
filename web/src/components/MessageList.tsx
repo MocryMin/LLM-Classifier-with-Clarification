@@ -24,13 +24,15 @@ export default function MessageList() {
   }
 
   return (
-    <ScrollArea className="flex-1">
-      <div className="max-w-3xl mx-auto py-4">
-        {messages.map((unit, i) => (
-          <MessageUnit key={unit.id} unit={unit} index={i} />
-        ))}
-        <div ref={bottomRef} />
-      </div>
-    </ScrollArea>
+    <div className="flex-1 min-h-0 overflow-hidden">
+      <ScrollArea className="h-full">
+        <div className="max-w-3xl mx-auto py-4">
+          {messages.map((unit, i) => (
+            <MessageUnit key={unit.id} unit={unit} index={i} />
+          ))}
+          <div ref={bottomRef} />
+        </div>
+      </ScrollArea>
+    </div>
   )
 }

@@ -90,6 +90,7 @@ export const useStore = create<AppState>((set, get) => ({
         };
         const final = [...get().messages, aiMsg];
         set({ messages: final, isLoading: false, progress: null });
+        get().saveCurrentConversation();
       },
       (error) => {
         set({ isLoading: false, error: error.message, progress: null });
@@ -157,6 +158,7 @@ export const useStore = create<AppState>((set, get) => ({
         };
         const truncated = get().messages.slice(0, index);
         set({ messages: [...truncated, aiMsg], isLoading: false, progress: null });
+        get().saveCurrentConversation();
       },
       (error) => {
         set({ isLoading: false, error: error.message, progress: null });

@@ -30,7 +30,17 @@ from workspace_manager import (
 )
 from parser_registry import get_parser_for_content, list_parsers
 
-app = FastAPI(title="智能管家 Chat Playground", version="0.1.0")
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def lifespan(app):
+    yield
+    from workspace_manager import cleanup_staging
+    cleanup_staging()
+
+
+app = FastAPI(title="智能管家 Chat Playground", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -39,12 +49,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    from workspace_manager import cleanup_staging
-    cleanup_staging()
 
 
 class ChatRequest(BaseModel):
