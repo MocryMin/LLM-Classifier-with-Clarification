@@ -18,6 +18,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from conversation_manager import (
+    list_conversations, create_conversation, get_conversation,
+    save_conversation, delete_conversation,
+)
+
 app = FastAPI(title="智能管家 Chat Playground", version="0.1.0")
 
 app.add_middleware(
@@ -87,6 +92,49 @@ async def chat(request: ChatRequest):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ─── Conversation CRUD ─────────────────────────────────────────
+@app.get("/api/conversations")
+async def api_list_conversations():
+    return list_conversations()
+
+
+@app.post("/api/conversations")
+async def api_create_conversation():
+    return create_conversation()
+
+
+@app.get("/api/conversations/{conv_id}")
+async def api_get_conversation(conv_id: str):
+    conv = get_conversation(conv_id)
+    if conv is None:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    return conv
+
+
+class SaveConversationBody(BaseModel):
+    messages: list[dict]
+    meta: dict | None = None
+
+
+@app.put("/api/conversations/{conv_id}")
+async def api_save_conversation(conv_id: str, body: SaveConversationBody):
+    ok = save_conversation(conv_id, body.messages, body.meta)
+    if not ok:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    return {"status": "ok"}
+
+
+@app.delete("/api/conversations/{conv_id}")
+async def api_delete_conversation(conv_id: str):
+    ok = delete_conversation(conv_id)
+    if not ok:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    return {"status": "ok"}
 
 
 if __name__ == "__main__":
