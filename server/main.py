@@ -13,7 +13,7 @@ import traceback
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_PROJECT_ROOT, 'src'))
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -35,12 +35,6 @@ class ChatRequest(BaseModel):
     debug: bool = Field(False, description="Enable debug logging")
 
 
-class ProgressEvent(BaseModel):
-    stage: str
-    done: int | None = None
-    total: int | None = None
-
-
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}
@@ -49,8 +43,11 @@ async def health():
 async def _run_entrance(messages: list[dict], l0_threshold: float, debug: bool):
     """Run entrance in a thread to avoid blocking the event loop."""
     from entrance import entrance
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, lambda: entrance(messages, l0_threshold, debug))
+    loop = asyncio.get_running_loop()
+    return await asyncio.wait_for(
+        loop.run_in_executor(None, lambda: entrance(messages, l0_threshold, debug)),
+        timeout=120,
+    )
 
 
 @app.post("/api/chat")
@@ -58,14 +55,14 @@ async def chat(request: ChatRequest):
     """
     SSE streaming chat endpoint.
     Events:
-      - progress: {stage, done?, total?}  -- L0/L1 progress
+      - progress: {stage}  -- L0/L1 progress
       - result:   complete entrance return value
       - error:    {message}
     """
     async def event_stream():
         try:
             # Progress: L0 starting
-            yield f"event: progress\ndata: {json.dumps({'stage': 'l0_start', 'done': 0, 'total': 22}, ensure_ascii=False)}\n\n"
+            yield f"event: progress\ndata: {json.dumps({'stage': 'l0_start'}, ensure_ascii=False)}\n\n"
 
             start_time = time.time()
             result = await _run_entrance(request.messages, request.l0_threshold, request.debug)
