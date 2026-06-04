@@ -1,8 +1,72 @@
 """
 L1 意图路由层 (Purpose Router)
+================================
 
-单次 LLM 调用：将全部意图定义 + 对话历史一次性输入大模型，
-LLM 同时完成意图分类 + 澄清判断 + 澄清话术生成。
+单次 LLM 调用，同时完成：
+  意图分类 → 槽位提取 → 澄清判断 → 操作决策 → 用户输出生成。
+
+----
+入口函数
+----
+
+    from L1_purpose import purpose_route
+    result = purpose_route(messages, debug=False, max_json_retries=2)
+
+参数:
+    messages          : list[dict]   — OpenAI 格式完整对话历史
+                        每条: {"role": "user"|"assistant", "content": "..."}
+                        role="system" 的消息会被自动跳过
+    debug             : bool         — True 时打印原始 LLM JSON (调试用)
+    max_json_retries  : int          — JSON 解析失败时重试次数 (默认 2)
+
+返回:
+    dict {
+        "primary_intent": {
+            "l1": str,              # 一级意图  例: "售前服务"
+            "l2": str,              # 二级意图  例: "车险投保"
+            "confidence": float     # 置信度 [0,1]
+        },
+        "top_candidates": [         # 概率 >0.1 的候选意图
+            {"l1": str, "l2": str, "probability": float}, ...
+        ],
+        "needs_clarification": bool, # 是否需要向用户发起澄清
+        "slots": {                   # needs_clarification=false 时全为空
+            "all_slots": [          # 该场景全部待填槽位
+                {"name": str, "description": str, "options": [str,...]}, ...
+            ],
+            "filled_slots": {str: str},  # 对话中已提取的 {槽位名: 值}
+            "missing_slots": [str, ...]  # 尚未填写的槽位名
+        },
+        "operation": {
+            "type": str,            # clarify_L1     — 一级大类不明确
+                                    # clarify_slots  — 槽位缺失需收集
+                                    # direct_reply   — 集团直接答复
+                                    # route_to_subsidiary — 路由子公司 (含 ###tool_call)
+                                    # fallback       — 未覆盖兜底
+            "detail": str           # 操作说明
+        },
+        "user_output": str,         # 面向用户的输出文本
+                                    # 可能包含 ###tool_call(api_name) 标记
+        "reason": str               # 判断依据 (1-2句)
+    }
+
+调用示例:
+    result = purpose_route([
+        {"role": "user", "content": "我要买车险，帮我报个价"}
+    ])
+    # result["operation"]["type"]   → "clarify_slots"
+    # result["slots"]["missing_slots"] → ["车牌号","车型年份","使用性质",...]
+    # result["user_output"]         → "您好，帮您精准计算车险方案。请提供..."
+
+    result = purpose_route([
+        {"role": "user", "content": "我的车被撞了，要报案"}
+    ])
+    # result["operation"]["type"]   → "route_to_subsidiary"
+    # result["user_output"]         → "...\n###tool_call(claim_report_api)"
+
+依赖:
+    pip install openai
+    prompt/L1_intent_router.txt  (prompt 模板，相对路径 ../prompt/)
 """
 import os
 import json
@@ -76,9 +140,38 @@ def _format_messages(messages):
 # 解析 LLM 输出的 JSON
 # ============================================================
 
-def _parse_response(response):
-    """解析 LLM 输出的 JSON，含容错处理"""
-    text = response.strip()
+_FALLBACK_SIGNATURE = 'JSON parse error'
+
+
+def _make_fallback_result(reason='JSON parse error, fallback'):
+    """构造容错兜底结果"""
+    return {
+        'primary_intent': {'l1': '', 'l2': '', 'confidence': 0.0},
+        'top_candidates': [],
+        'needs_clarification': True,
+        'slots': {
+            'all_slots': [],
+            'filled_slots': {},
+            'missing_slots': [],
+        },
+        'operation': {
+            'type': 'clarify_L1',
+            'detail': '解析失败，默认触发一级意图澄清',
+        },
+        'user_output': '小保没有完全理解您的需求，请告诉我您需要以下哪类服务？\n'
+                       '① 售前咨询 ② 保单服务 ③ 理赔服务 ④ 增值服务 ⑤ 客户服务',
+        'reason': reason,
+    }
+
+
+def _is_fallback(result):
+    """检查是否为兜底结果"""
+    return _FALLBACK_SIGNATURE in result.get('reason', '')
+
+
+def _try_parse_json(text):
+    """尝试解析 LLM 输出为 JSON。返回 (result, success)。"""
+    text = text.strip()
 
     # 去掉 markdown code block
     if text.startswith('```'):
@@ -86,72 +179,66 @@ def _parse_response(response):
         text = re.sub(r'\s*```$', '', text)
 
     try:
-        return json.loads(text)
+        result = json.loads(text)
+        result.setdefault('primary_intent', {'l1': '', 'l2': '', 'confidence': 0.0})
+        result.setdefault('top_candidates', [])
+        result.setdefault('needs_clarification', False)
+        result.setdefault('slots', {
+            'all_slots': [],
+            'filled_slots': {},
+            'missing_slots': [],
+        })
+        result.setdefault('operation', {'type': 'direct_reply', 'detail': ''})
+        result.setdefault('user_output', '')
+        result.setdefault('reason', '')
+        return result, True
     except json.JSONDecodeError:
-        pass
-
-    # 容错：尝试提取关键信息
-    result = {
-        'primary_intent': {'l1': '', 'l2': '', 'confidence': 0.0},
-        'top_candidates': [],
-        'needs_clarification': True,
-        'clarification': {
-            'level': None,
-            'question': '您的问题我需要进一步确认，请告诉我更多信息？',
-            'options': [],
-            'target_slots': [],
-        },
-        'reason': 'JSON parse error, fallback',
-    }
-
-    # 尝试匹配 needs_clarification
-    if '"needs_clarification": false' in text.lower() or '"needs_clarification":false' in text.lower():
-        result['needs_clarification'] = False
-        result['clarification'] = {
-            'level': None,
-            'question': None,
-            'options': [],
-            'target_slots': [],
-        }
-
-    return result
+        return _make_fallback_result(), False
 
 
 # ============================================================
 # 主入口：一次调用，全部搞定
 # ============================================================
 
-def purpose_route(messages):
+def purpose_route(messages, debug=False, max_json_retries=2):
     """
-    L1 意图路由 —— 单次 LLM 调用完成意图分类 + 澄清判断 + 澄清话术生成。
+    L1 意图路由 —— 单次 LLM 调用完成：
+      意图分类 + 槽位提取 + 澄清判断 + 操作决策 + 用户输出生成。
+
+    JSON 解析失败时会自动重试（最多 max_json_retries 次），
+    全部失败后才使用兜底结果。
 
     Args:
         messages: list[dict], OpenAI 格式的完整对话历史
+            例: [{"role": "user", "content": "我要买车险"}]
+        debug: bool, 若为 True 则打印原始 LLM 返回（用于调试）
+        max_json_retries: int, JSON 解析失败时的最大重试次数
 
     Returns:
-        dict: {
-            'primary_intent': {'l1': str, 'l2': str, 'confidence': float},
-            'top_candidates': [{'l1': str, 'l2': str, 'probability': float}, ...],
-            'needs_clarification': bool,
-            'clarification': {
-                'level': 'L1'|'L2'|'slot'|'multi_intent'|None,
-                'question': str|None,
-                'options': [str, ...],
-                'target_slots': [str, ...],
-            },
-            'reason': str,
-        }
+        dict: 见函数内注释
     """
     conversation = _format_messages(messages)
     template = _load_prompt()
-    full_prompt = template.format(conversation=conversation)
+    full_prompt = template.replace('{conversation}', conversation)
+    user_msg = [{"role": "user", "content": full_prompt}]
 
-    response = _ask(
-        [{"role": "user", "content": full_prompt}],
-        thinking='enabled',  # 意图路由需要深度思考
-    )
+    for attempt in range(1 + max_json_retries):
+        raw = _ask(user_msg, thinking='enabled')
 
-    result = _parse_response(response)
+        if debug:
+            print(f'\n[L1 RAW JSON attempt {attempt+1}]:')
+            print(raw)
+
+        result, ok = _try_parse_json(raw)
+
+        if ok:
+            return result
+
+        if attempt < max_json_retries:
+            print(f'[L1] JSON parse failed, retrying... ({attempt+1}/{max_json_retries})')
+
+    # 全部重试耗尽，返回最后一次的兜底结果
+    print('[L1] JSON parse failed after all retries, using fallback.')
     return result
 
 
@@ -160,29 +247,44 @@ def purpose_route(messages):
 # ============================================================
 
 if __name__ == '__main__':
+    DEBUG = True  # 测试时输出原始 LLM JSON
+
     test_cases = [
-        [{"role": "user", "content": "你好"}],
-        [{"role": "user", "content": "帮我查一下"}],
-        [{"role": "user", "content": "我要买车险，帮我报个价"}],
-        [{"role": "user", "content": "我的车被撞了，要报案"}],
-        [{"role": "user", "content": "退保和理赔一起处理"}],
-        [{"role": "user", "content": "蓝医保怎么样"}],
-        [{"role": "user", "content": "我的保单贷款利息是多少"}],
-        [{"role": "user", "content": "我要投诉你们"}],
-        [{"role": "user", "content": "车在路上抛锚了，需要拖车"}],
+        [{"role": "user", "content": "你好"},
+         {"role": "assistant","content":"您好，我是智能管家小保，很高兴为您服务！请问有什么可以帮您？"},
+         {"role":"user","content":"当然！"},
+         {"role":"assistant","content":"小保可以帮您办理各类保险业务，您想咨询或办理哪一项呢？\n1. 售前咨询（了解/购买保险）\n2. 保单服务（查询/变更/续期/退保等）\n3. 理赔服务（报案/进度/材料等）\n4. 增值服务（道路救援/代驾/年检等）\n5. 客户服务（投诉/业务员/网点等）\n请告诉小保您需要的服务类型～"},
+         {"role":"user","content":"我想办保险"},
+         {"role":"assistant","content":"好的，小保可以帮您办理保险！您想了解哪方面的保险呢？比如人身寿险、医疗健康、意外保障，还是车险财产险？您可以告诉我，我为您详细介绍～"},
+         {"role":"user","content":"我想买车险"},
+         {"role":"assistant","content":"好的，小保帮您办理车险。为了给您精准的报价，请提供以下信息：\n1. 您的车牌号是多少？\n2. 车辆的品牌型号和购买年份？\n3. 车辆使用性质是私家车还是营运车？\n（其余信息稍后我会继续向您确认）"},
+         {"role":"user","content":"车牌是前苏联114514，车是1945年的虎式坦克，军用车"},
+         {"role":"assistant","content":"小保收到啦，这个车型还真是少见呢～ 为了给您安排精准的报价，还需要几个信息：\n1. 车主信息是和行驶证一致吗？\n2. 上一年有没有出过险呢？\n3. 您需要的保障是：仅交强险、交强险加商业险，还是小保帮您推荐合适的方案？"},
+         {"role":"user","content":"车主是斯大林格勒，去年一直在博物馆里展出，没有出险，我需要小保推荐方案"},
+         {"role":"assistant","content":"您的虎式坦克确实很特别～ 小保再跟您确认两个信息：\n1. 这辆车的使用性质是私家车还是营运车呢？\n2. 车主信息是和行驶证上的所有人一致吗？\n（确认后我会根据您的需求推荐合适的车险方案～）"},
+         {"role":"user","content":"运营车，车主信息和行驶证一致"},
+         ]
+         
     ]
 
     for i, msgs in enumerate(test_cases):
         print(f"\n{'='*60}")
-        print(f"Test {i+1}: {msgs[0]['content']}")
-        result = purpose_route(msgs)
+        label = msgs[0]['content'][:50] + '...' if len(msgs) > 1 else msgs[0]['content']
+        print(f"Test {i+1}: {label}")
+        result = purpose_route(msgs, debug=DEBUG)
         pi = result['primary_intent']
+        op = result['operation']
+        slots = result['slots']
+
         print(f"  意图: {pi['l1']} > {pi['l2']} (confidence={pi['confidence']:.2f})")
+        print(f"  操作: {op['type']} | {op['detail']}")
         print(f"  需要澄清: {result['needs_clarification']}")
-        if result['needs_clarification'] and result.get('clarification'):
-            c = result['clarification']
-            print(f"  澄清层级: {c.get('level')}")
-            print(f"  澄清话术: {c.get('question')}")
-            if c.get('options'):
-                print(f"  选项: {c['options']}")
+
+        if result['needs_clarification'] and slots.get('all_slots'):
+            print(f"  全部槽位: {[s['name'] for s in slots['all_slots']]}")
+            print(f"  已填: {slots['filled_slots']}")
+            print(f"  缺失: {slots['missing_slots']}")
+
+        user_out = result['user_output']
+        print(f"  user_output: {user_out[:200]}{'...' if len(user_out)>200 else ''}")
         print(f"  理由: {result['reason']}")
