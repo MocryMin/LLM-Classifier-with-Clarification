@@ -19,6 +19,7 @@ prompt/intent_prompts/
 src/generate_intent_prompts.py
 
 # Test samples (only test.xlsx is committed)
+test/test_L0_tag_judge.py
 test/testL0/L0_test_samples.xlsx
 test/testL0/result.xlsx
 test/testL0/results/
