@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "results": {
+    "1": {
+      "case": 1,
+      "data": {
+        "primary_intent": {
+          "l1": "开场",
+          "l2": "欢迎引导",
+          "confidence": 0.99
+        },
+        "top_candidates": [],
+        "needs_clarification": false,
+        "slots": {
+          "all_slots": [],
+          "filled_slots": {},
+          "missing_slots": []
+        },
+        "operation": {
+          "type": "direct_reply",
+          "detail": "集团直接回复欢迎语，介绍小保身份和功能"
+        },
+        "user_output": "您好，我是太保集团的智能管家小保，很高兴为您服务！我可以帮您咨询保险产品、办理保单业务、查询理赔进度、使用增值服务等，请问有什么可以帮您？",
+        "reason": "用户问候身份，未表达业务需求，属于欢迎引导场景，直接回复欢迎语。"
+      }
+    },
+    "3": {
+      "case": 1,
+      "data": {
+        "primary_intent": {
+          "l1": "售前服务",
+          "l2": "产品咨询",
+          "confidence": 0.96
+        },
+        "top_candidates": [
+          {
+            "l1": "售前服务",
+            "l2": "产品咨询",
+            "probability": 0.96
+          }
+        ],
+        "needs_clarification": false,
+        "slots": {
+          "all_slots": [],
+          "filled_slots": {},
+          "missing_slots": []
+        },
+        "operation": {
+          "type": "direct_reply",
+          "detail": "集团直接答复公司介绍类通用知识"
+        },
+        "user_output": "太保集团全称中国太平洋保险（集团）股份有限公司，是一家综合性保险金融集团，旗下拥有太平洋寿险、太平洋产险、太平洋健康险等子公司，为您提供车险、健康险、寿险、意外险、年金等各类保险产品以及保单服务、理赔、增值服务等一站式保障，请问有什么具体需要了解的吗？",
+        "reason": "用户询问“什么是太保”，属于保险知识科普，未涉及购买意向，归入产品咨询(2.1)，集团可直接答复通用介绍，无需澄清或调用子公司。"
+      }
+    },
+    "5": {
+      "case": 1,
+      "data": {
+        "primary_intent": {
+          "l1": "售前服务",
+          "l2": "产品咨询",
+          "confidence": 0.95
+        },
+        "top_candidates": [
+          {
+            "l1": "售前服务",
+            "l2": "产品咨询",
+            "probability": 0.95
+          }
+        ],
+        "needs_clarification": false,
+        "slots": {
+          "all_slots": [],
+          "filled_slots": {},
+          "missing_slots": []
+        },
+        "operation": {
+          "type": "direct_reply",
+          "detail": "直接回复用户关于一站式服务的概念解释"
+        },
+        "user_output": "一站式服务是指您在我们太保集团可以一次性解决保险相关的所有需求，从咨询、投保，到保单管理、理赔、增值服务等，都能在一个平台或一套流程中完成，不用在多处反复沟通，省时又省心。还有什么想了解的吗？",
+        "reason": "用户询问太保集团一站式服务的含义，属于保险知识科普，意图明确为产品咨询，无需澄清，集团直接回复即可。"
+      }
+    },
+    "7": {
+      "case": 1,
+      "data": {
+        "primary_intent": {
+          "l1": "售前服务",
+          "l2": "产品咨询",
+          "confidence": 0.95
+        },
+        "top_candidates": [
+          {
+            "l1": "售前服务",
+            "l2": "产品咨询",
+            "probability": 0.95
+          }
+        ],
+        "needs_clarification": false,
+        "slots": {
+          "all_slots": [],
+          "filled_slots": {},
+          "missing_slots": []
+        },
+        "operation": {
+          "type": "direct_reply",
+          "detail": "集团直接答复未成年人投保通用知识"
+        },
+        "user_output": "小朋友你好呀！8岁是可以购买保险的哦～不过因为你是未成年人，需要由你的爸爸妈妈或监护人作为投保人来帮你办理。适合你的保险有学平险、少儿重疾险等，具体可以请家长帮你看一看。想要了解哪一类呢？",
+        "reason": "用户询问8岁能否投保，属于产品咨询场景，无购买意图，通用知识可直接答复。"
+      }
+    }
+  }
+}

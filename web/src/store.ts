@@ -84,6 +84,20 @@ export const useStore = create<AppState>((set, get) => ({
 
     const apiMessages: Message[] = updatedMessages.map(m => m.message);
 
+    // ★ Save user message IMMEDIATELY (before waiting for AI)
+    const saveResults: Record<string, unknown> = {};
+    updatedMessages.forEach((m, i) => {
+      if (m.entranceResult) saveResults[String(i)] = m.entranceResult;
+    });
+    api.saveConversation(convId, {
+      messages: apiMessages,
+      meta: { l0_threshold: state.l0Threshold },
+      results: Object.keys(saveResults).length > 0 ? saveResults : undefined,
+    }).catch(() => {});
+
+    // ★ Capture conversation ID in closure — response always saved to the right conversation
+    const targetConvId = convId;
+
     api.chatSSE(
       apiMessages,
       state.l0Threshold,
@@ -95,9 +109,27 @@ export const useStore = create<AppState>((set, get) => ({
           message: { role: 'assistant', content: getMessageText(result) },
           entranceResult: result,
         };
-        const final = [...get().messages, aiMsg];
-        set({ messages: final, isLoading: false, progress: null });
-        get().saveCurrentConversation();
+
+        // If user is still on same conversation, update UI
+        if (get().conversationId === targetConvId) {
+          const current = get().messages;
+          set({ messages: [...current, aiMsg], isLoading: false, progress: null });
+        } else {
+          set({ isLoading: false, progress: null });
+        }
+
+        // Always save to the target conversation (even if user switched away)
+        const allMessages = [...apiMessages, aiMsg.message];
+        const allResults: Record<string, unknown> = {};
+        updatedMessages.forEach((m, i) => {
+          if (m.entranceResult) allResults[String(i)] = m.entranceResult;
+        });
+        allResults[String(apiMessages.length)] = result;
+        api.saveConversation(targetConvId, {
+          messages: allMessages,
+          meta: { l0_threshold: state.l0Threshold },
+          results: allResults,
+        }).catch(() => {});
       },
       (error) => {
         set({ isLoading: false, error: error.message, progress: null });
@@ -150,8 +182,19 @@ export const useStore = create<AppState>((set, get) => ({
 
   resendFromIndex: async (index: number) => {
     const state = get();
+    const convId = state.conversationId;
     const msgsToSend = state.messages.slice(0, index).map(m => m.message);
     set({ isLoading: true, error: null, progress: null });
+
+    // Save truncated state immediately
+    if (convId) {
+      api.saveConversation(convId, {
+        messages: msgsToSend,
+        meta: { l0_threshold: state.l0Threshold },
+      }).catch(() => {});
+    }
+
+    const targetConvId = convId;
 
     api.chatSSE(
       msgsToSend,
@@ -164,9 +207,25 @@ export const useStore = create<AppState>((set, get) => ({
           message: { role: 'assistant', content: getMessageText(result) },
           entranceResult: result,
         };
-        const truncated = get().messages.slice(0, index);
-        set({ messages: [...truncated, aiMsg], isLoading: false, progress: null });
-        get().saveCurrentConversation();
+
+        if (get().conversationId === targetConvId) {
+          const truncated = get().messages.slice(0, index);
+          set({ messages: [...truncated, aiMsg], isLoading: false, progress: null });
+        } else {
+          set({ isLoading: false, progress: null });
+        }
+
+        // Always save to target conversation
+        if (targetConvId) {
+          const allMessages = [...msgsToSend, aiMsg.message];
+          const allResults: Record<string, unknown> = {};
+          allResults[String(msgsToSend.length)] = result;
+          api.saveConversation(targetConvId, {
+            messages: allMessages,
+            meta: { l0_threshold: state.l0Threshold },
+            results: allResults,
+          }).catch(() => {});
+        }
       },
       (error) => {
         set({ isLoading: false, error: error.message, progress: null });

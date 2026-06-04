@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "results": {
+    "1": {
+      "case": 1,
+      "data": {
+        "primary_intent": {
+          "l1": "开场",
+          "l2": "欢迎引导",
+          "confidence": 1
+        },
+        "top_candidates": [
+          {
+            "l1": "开场",
+            "l2": "欢迎引导",
+            "probability": 1
+          }
+        ],
+        "needs_clarification": false,
+        "slots": {
+          "all_slots": [],
+          "filled_slots": {},
+          "missing_slots": []
+        },
+        "operation": {
+          "type": "direct_reply",
+          "detail": "用户问候，直接回复欢迎语"
+        },
+        "user_output": "您好！我是太保集团智能管家小保，很高兴为您服务！\n您可以咨询保险产品、保单查询、理赔报案、增值服务等业务，请问有什么可以帮您？",
+        "reason": "用户仅发送问候语“你好”，未表达任何业务需求，符合欢迎引导场景。"
+      }
+    },
+    "3": {
+      "case": 1,
+      "data": {
+        "primary_intent": {
+          "l1": "开场",
+          "l2": "意图澄清",
+          "confidence": 0.9
+        },
+        "top_candidates": [
+          {
+            "l1": "开场",
+            "l2": "意图澄清",
+            "probability": 0.9
+          },
+          {
+            "l1": "开场",
+            "l2": "欢迎引导",
+            "probability": 0.1
+          }
+        ],
+        "needs_clarification": true,
+        "slots": {
+          "all_slots": [],
+          "filled_slots": {},
+          "missing_slots": []
+        },
+        "operation": {
+          "type": "clarify_L1",
+          "detail": "用户询问功能范围，意图模糊，需引导选择一级业务类别"
+        },
+        "user_output": "小保可以为您提供以下服务：\n1. 售前咨询：了解保险产品、投保方案\n2. 保单服务：查询保单、续费、变更等\n3. 理赔服务：报案、查进度、咨询材料\n4. 增值服务：查权益、道路救援等\n5. 客户服务：投诉、找业务员、网点查询\n请问您想了解哪方面的内容呢？",
+        "reason": "用户第二轮提问“你能干啥”，未表达任何具体业务意图，属于意图澄清场景，需引导用户选择一级大类。"
+      }
+    },
+    "5": {
+      "case": 1,
+      "data": {
+        "primary_intent": {
+          "l1": "保单服务",
+          "l2": "保单变更",
+          "confidence": 0.98
+        },
+        "top_candidates": [
+          {
+            "l1": "保单服务",
+            "l2": "保单变更",
+            "probability": 0.98
+          }
+        ],
+        "needs_clarification": false,
+        "slots": {
+          "all_slots": [],
+          "filled_slots": {},
+          "missing_slots": []
+        },
+        "operation": {
+          "type": "route_to_subsidiary",
+          "detail": "用户明确要求修改保单信息，属于保单变更场景，直接路由到子公司处理。"
+        },
+        "user_output": "好的，小保正在为您转接保单变更服务，请稍后...\n###tool_call(policy_modify_api)",
+        "reason": "用户提出要修改指定保单号的信息，意图明确指向保单变更，无需澄清槽位。"
+      }
+    }
+  }
+}
