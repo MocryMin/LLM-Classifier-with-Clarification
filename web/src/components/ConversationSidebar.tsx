@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { Plus, Search, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { useStore } from '@/store'
 import ConversationItem from './ConversationItem'
 
@@ -42,7 +41,7 @@ export default function ConversationSidebar() {
       </div>
 
       {/* List */}
-      <ScrollArea className="flex-1">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
         <div className="px-2 py-1">
           {filtered.length === 0 && (
             <p className="text-xs text-gray-600 text-center py-8">
@@ -61,7 +60,7 @@ export default function ConversationSidebar() {
             />
           ))}
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Footer actions */}
       {conversationId && (

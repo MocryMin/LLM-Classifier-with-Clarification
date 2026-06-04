@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { useStore } from '@/store'
 import MessageUnit from './MessageUnit'
 
@@ -24,15 +23,13 @@ export default function MessageList() {
   }
 
   return (
-    <div className="flex-1 min-h-0 overflow-hidden">
-      <ScrollArea className="h-full">
-        <div className="max-w-3xl mx-auto py-4">
-          {messages.map((unit, i) => (
-            <MessageUnit key={unit.id} unit={unit} index={i} />
-          ))}
-          <div ref={bottomRef} />
-        </div>
-      </ScrollArea>
+    <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+      <div className="max-w-3xl mx-auto py-4">
+        {messages.map((unit, i) => (
+          <MessageUnit key={unit.id} unit={unit} index={i} />
+        ))}
+        <div ref={bottomRef} />
+      </div>
     </div>
   )
 }
