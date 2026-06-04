@@ -185,9 +185,11 @@ export const useStore = create<AppState>((set, get) => ({
 
   loadConversation: async (id: string) => {
     const conv = await api.getConversation(id);
-    const units: MessageUnit[] = conv.messages.map(m => ({
+    const results = conv.results || {};
+    const units: MessageUnit[] = conv.messages.map((m, i) => ({
       id: generateId(),
       message: m,
+      entranceResult: results[String(i)] as EntranceResult | undefined,
     }));
     set({
       conversationId: id,
@@ -199,9 +201,15 @@ export const useStore = create<AppState>((set, get) => ({
   saveCurrentConversation: async () => {
     const { conversationId, messages, l0Threshold } = get();
     if (!conversationId) return;
+    // Collect entrance results keyed by message index
+    const results: Record<string, unknown> = {};
+    messages.forEach((m, i) => {
+      if (m.entranceResult) results[String(i)] = m.entranceResult;
+    });
     await api.saveConversation(conversationId, {
       messages: messages.map(m => m.message),
       meta: { l0_threshold: l0Threshold },
+      results: Object.keys(results).length > 0 ? results : undefined,
     });
     get().refreshConversationList();
   },

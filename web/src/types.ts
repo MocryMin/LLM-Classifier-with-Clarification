@@ -86,6 +86,7 @@ export interface Conversation {
   updated_at: string;
   meta: ConversationMeta;
   messages: Message[];
+  results?: Record<string, EntranceResult>;
 }
 
 export interface ConversationListItem {

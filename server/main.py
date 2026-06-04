@@ -134,11 +134,12 @@ async def api_get_conversation(conv_id: str):
 class SaveConversationBody(BaseModel):
     messages: list[dict]
     meta: dict | None = None
+    results: dict | None = None
 
 
 @app.put("/api/conversations/{conv_id}")
 async def api_save_conversation(conv_id: str, body: SaveConversationBody):
-    ok = save_conversation(conv_id, body.messages, body.meta)
+    ok = save_conversation(conv_id, body.messages, body.meta, body.results)
     if not ok:
         from fastapi.responses import JSONResponse
         return JSONResponse({"error": "Not found"}, status_code=404)

@@ -82,7 +82,7 @@ export async function getConversation(id: string): Promise<Conversation> {
   return r.json();
 }
 
-export async function saveConversation(id: string, data: { messages: Message[]; meta?: Record<string, unknown> }): Promise<void> {
+export async function saveConversation(id: string, data: { messages: Message[]; meta?: Record<string, unknown>; results?: Record<string, unknown> }): Promise<void> {
   const r = await fetch(`${BASE}/api/conversations/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
