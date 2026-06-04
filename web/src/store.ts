@@ -109,6 +109,7 @@ export const useStore = create<AppState>((set, get) => ({
     const msgs = get().messages;
     const idx = msgs.findIndex(m => m.id === id);
     if (idx < 0) return;
+    if (msgs[idx].message.content === newContent) return; // no change, skip stale marking
     const updated = msgs.slice(0, idx).concat(
       msgs.slice(idx).map((m, i) => {
         if (i === 0) return { ...m, message: { ...m.message, content: newContent } };
