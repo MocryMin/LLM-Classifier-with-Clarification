@@ -2,7 +2,11 @@ import { useEffect } from 'react'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/toaster'
 import { useStore } from '@/store'
+import LayoutShell from '@/components/LayoutShell'
+import ConversationSidebar from '@/components/ConversationSidebar'
 import ChatMain from '@/components/ChatMain'
+import ThresholdSettings from '@/components/ThresholdSettings'
+import WorkspaceSidebar from '@/components/WorkspaceSidebar'
 
 export default function App() {
   const { createNewConversation, conversationId } = useStore()
@@ -15,9 +19,16 @@ export default function App() {
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="flex h-screen bg-gray-950 text-gray-100">
-        <ChatMain />
-      </div>
+      <LayoutShell
+        leftSidebar={<ConversationSidebar />}
+        main={
+          <>
+            <ThresholdSettings />
+            <ChatMain />
+          </>
+        }
+        rightSidebar={<WorkspaceSidebar />}
+      />
       <Toaster />
     </TooltipProvider>
   )
