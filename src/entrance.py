@@ -76,7 +76,9 @@
         "data": {
           "call_body":       "###tool_call(human_intervention_api)",
           "situation_brief": "<向人工坐席的情景快速披露，2-4 句中文>",
-          "user_comfort":    "<面向用户的安抚话语，2-4 句中文，客服口吻>"
+          "user_comfort":    "<面向用户的安抚话语，2-4 句中文，客服口吻>",
+          "l0_tags":         {"manual": 1.0, "angry": 0.93, "sad": 0.04,
+                              "urgent": 0.04, "non_biz": 0.0}
         }
       }
 
@@ -86,6 +88,7 @@
                                 系统检测到什么异常/建议关注点
         user_comfort    : str   以客服"小保"口吻安抚用户，体现共情，同时告知
                                 已安排人工处理。根据触发标签和情绪程度自适应
+        l0_tags         : dict  5 个 L0 标签的原始 01 概率值，供上层调试/日志
 
       触发该分支的 L0 标签（任一 ≥ 阈值即触发）：
         manual  ≥ threshold  → 用户 ≥2 次表达转人工意图
@@ -433,6 +436,7 @@ def entrance(messages, l0_threshold=0.7, debug=False):
 
         # ---- 拦截路径：升级处置 ----
         escalation_data = _escalate_to_human(messages, l0_result, triggered_tags, debug=debug)
+        escalation_data["l0_tags"] = l0_result
 
         return {
             "case": 0,
