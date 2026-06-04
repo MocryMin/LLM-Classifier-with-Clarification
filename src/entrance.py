@@ -44,26 +44,30 @@
 
 === 流水线 ===================================================================
 
-  调用 entrance() 后，内部自动完成以下两步：
+  调用 entrance() 后，L0 和 L1 并行发射以降低用户延迟：
 
-    ┌─────────────────────┐
-    │  ① L0 跨场景标记检测  │  tag_judge_v2(messages)
-    │     ~22 次 API 调用   │  并行检测 5 个标签（manual / angry / sad / urgent / non_biz）
-    └──────┬──────────────┘
-           │
-     ┌─────▼─────┐
-     │ 任一标签   │   标签值 ∈ [0, 1]，以 0.7 为拦截阈值
-     │ ≥ 阈值 ?   │
-     └──┬─────┬──┘
-        │ YES │ NO
-        ▼     ▼
-    ┌───────────────┐   ┌──────────────────────────────┐
-    │ ②a 升级处置    │   │ ②b L1 意图路由               │
-    │   ~1 次调用    │   │   ~2 次调用（含 JSON 重试）    │
-    │ escalation LLM │   │   purpose_route(messages)   │
-    └───────┬───────┘   └──────────────┬───────────────┘
-            ▼                          ▼
-     return {case: 0, ...}       return {case: 1, ...}
+    ┌──────────────────────────────────────────────────────────┐
+    │          ThreadPoolExecutor(max_workers=2)               │
+    │  ┌─────────────────────┐  ┌───────────────────────────┐  │
+    │  │ L0 tag_judge_v2()   │  │ L1 purpose_route()        │  │
+    │  │ ~22 flash 调用       │  │ ~2 pro 调用               │  │
+    │  └──────┬──────────────┘  └─────────────┬─────────────┘  │
+    └─────────┼───────────────────────────────┼────────────────┘
+              │ (先返回)                        │
+     ┌────────▼────────┐                        │
+     │ L0 任一标签      │                        │
+     │ ≥ 阈值 ?         │                        │
+     └──┬───────────┬──┘                        │
+        │ YES       │ NO                        │
+        ▼           ▼                           │
+    ┌──────────┐  ┌────────────────────┐        │
+    │ 升级处置  │  │ 等待 L1 结果       │◄───────┘
+    │ ~1 flash │  └────────┬───────────┘
+    └────┬─────┘           ▼
+         ▼          return {case: 1, ...}
+  return {case: 0, ...}
+
+  墙钟耗时：max(L0, L1) + (仅 case=0 时 +1 次 escalation)，相比串行 L0+L1 显著降低。
 
 === 返回 =====================================================================
 
@@ -174,6 +178,7 @@
     L0 判别性标签:  deepseek-v4-flash (×~20)
     L1 意图路由:    deepseek-v4-pro   (×~2)
     升级处置:       deepseek-v4-flash (×1)
+    （L0 与 L1 并行发射；升级处置仅 case=0 时串行调用）
 
 === 配置 =====================================================================
 
@@ -191,6 +196,7 @@ import os
 import sys
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 # 确保能导入同目录模块
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -417,50 +423,54 @@ def entrance(messages, l0_threshold=0.7, debug=False):
     if debug:
         print(f'[entrance] 收到 {len(messages)} 条消息')
 
-    # ---- Step 1: L0 跨场景标记检测 ----
+    # ---- L0 + L1 并行发射 ----
     if debug:
-        print('[entrance] Step 1: 调用 L0 tag_judge_v2 ...')
+        print('[entrance] L0 + L1 并行发射 ...')
 
-    l0_result = tag_judge_v2(messages)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        future_l0 = executor.submit(tag_judge_v2, messages)
+        future_l1 = executor.submit(purpose_route, messages, debug)
 
-    if debug:
-        print(f'[entrance] L0 结果: {json.dumps(l0_result, ensure_ascii=False)}')
+        # 等 L0 先返回（flash 模型，通常比 L1 的 pro 快）
+        l0_result = future_l0.result()
 
-    # ---- Step 2: 检查是否触发 L0 拦截 ----
-    should_intercept, triggered_tags = _check_l0_intercept(l0_result, l0_threshold)
-
-    if should_intercept:
         if debug:
-            print(f'[entrance] L0 拦截触发! 触发标签: {triggered_tags}')
-            print('[entrance] Step 2a: 路由至升级处置智能体 ...')
+            print(f'[entrance] L0 结果: {json.dumps(l0_result, ensure_ascii=False)}')
 
-        # ---- 拦截路径：升级处置 ----
-        escalation_data = _escalate_to_human(messages, l0_result, triggered_tags, debug=debug)
-        escalation_data["l0_tags"] = l0_result
+        # ---- 检查 L0 拦截 ----
+        should_intercept, triggered_tags = _check_l0_intercept(l0_result, l0_threshold)
+
+        if should_intercept:
+            if debug:
+                print(f'[entrance] L0 拦截触发! 触发标签: {triggered_tags}')
+                print('[entrance] 路由至升级处置智能体 (L1 结果丢弃) ...')
+
+            # 升级处置（L1 还在跑但不管了）
+            escalation_data = _escalate_to_human(messages, l0_result, triggered_tags, debug=debug)
+            escalation_data["l0_tags"] = l0_result
+
+            return {
+                "case": 0,
+                "data": escalation_data,
+            }
+
+        # ---- L0 通过，等 L1 ----
+        if debug:
+            print('[entrance] L0 通过 (无标签触发)，等待 L1 ...')
+
+        l1_result = future_l1.result()
+
+        if debug:
+            pi = l1_result.get('primary_intent', {})
+            op = l1_result.get('operation', {})
+            print(f'[entrance] L1 完成: {pi.get("l1", "?")} > {pi.get("l2", "?")} '
+                  f'(confidence={pi.get("confidence", 0):.2f}), '
+                  f'operation={op.get("type", "?")}')
 
         return {
-            "case": 0,
-            "data": escalation_data,
+            "case": 1,
+            "data": l1_result,
         }
-
-    # ---- Step 3: L0 通过，调用 L1 ----
-    if debug:
-        print('[entrance] L0 通过 (无标签触发)')
-        print('[entrance] Step 2b: 调用 L1 purpose_route ...')
-
-    l1_result = purpose_route(messages, debug=debug)
-
-    if debug:
-        pi = l1_result.get('primary_intent', {})
-        op = l1_result.get('operation', {})
-        print(f'[entrance] L1 完成: {pi.get("l1", "?")} > {pi.get("l2", "?")} '
-              f'(confidence={pi.get("confidence", 0):.2f}), '
-              f'operation={op.get("type", "?")}')
-
-    return {
-        "case": 1,
-        "data": l1_result,
-    }
 
 
 # ============================================================
