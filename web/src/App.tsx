@@ -9,13 +9,24 @@ import ThresholdSettings from '@/components/ThresholdSettings'
 import WorkspaceSidebar from '@/components/WorkspaceSidebar'
 
 export default function App() {
-  const { createNewConversation, conversationId } = useStore()
+  const { createNewConversation, conversationId, toggleLeftSidebar, toggleRightSidebar, saveCurrentConversation } = useStore()
 
   useEffect(() => {
     if (!conversationId) {
       createNewConversation()
     }
   }, [conversationId, createNewConversation])
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === 'b') { e.preventDefault(); toggleLeftSidebar(); }
+      if (e.ctrlKey && e.shiftKey && e.key === 'B') { e.preventDefault(); toggleRightSidebar(); }
+      if (e.ctrlKey && e.key === 'n') { e.preventDefault(); createNewConversation(); }
+      if (e.ctrlKey && e.key === 's') { e.preventDefault(); saveCurrentConversation(); }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [toggleLeftSidebar, toggleRightSidebar, createNewConversation, saveCurrentConversation]);
 
   return (
     <TooltipProvider delayDuration={300}>
