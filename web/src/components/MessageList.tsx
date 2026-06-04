@@ -5,9 +5,12 @@ import MessageUnit from './MessageUnit'
 export default function MessageList() {
   const { messages } = useStore()
   const bottomRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (bottomRef.current) {
+      bottomRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [messages.length])
 
   if (messages.length === 0) {
@@ -23,7 +26,7 @@ export default function MessageList() {
   }
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+    <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden" style={{ overscrollBehavior: 'contain' }}>
       <div className="max-w-3xl mx-auto py-4">
         {messages.map((unit, i) => (
           <MessageUnit key={unit.id} unit={unit} index={i} />

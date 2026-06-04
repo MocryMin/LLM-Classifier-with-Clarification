@@ -17,7 +17,7 @@ export default function LayoutShell({ leftSidebar, main, rightSidebar }: Props) 
     <div className="flex h-screen overflow-hidden">
       {/* Left sidebar */}
       <div className={cn(
-        'flex flex-col border-r border-gray-800 bg-gray-950 transition-all duration-200',
+        'flex flex-col border-r border-gray-800 bg-gray-950 transition-all duration-200 overflow-hidden',
         leftSidebarOpen ? 'w-72' : 'w-0 overflow-hidden border-r-0',
       )}>
         {leftSidebarOpen && leftSidebar}
@@ -39,7 +39,7 @@ export default function LayoutShell({ leftSidebar, main, rightSidebar }: Props) 
 
       {/* Right sidebar */}
       <div className={cn(
-        'flex flex-col border-l border-gray-800 bg-gray-950 transition-all duration-200',
+        'flex flex-col border-l border-gray-800 bg-gray-950 transition-all duration-200 overflow-hidden',
         rightSidebarOpen ? 'w-72' : 'w-0 overflow-hidden border-l-0',
       )}>
         {rightSidebarOpen && rightSidebar}

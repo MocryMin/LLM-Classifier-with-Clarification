@@ -11,7 +11,7 @@ export default function ChatMain() {
     : null
 
   return (
-    <div className="flex flex-col flex-1 min-w-0">
+    <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
       {/* Loading indicator */}
       {isLoading && progressLabel && (
         <div className="flex items-center gap-2 px-4 py-1.5 bg-blue-950/50 border-b border-blue-900">

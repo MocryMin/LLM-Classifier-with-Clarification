@@ -38,7 +38,7 @@ export default function WorkspaceSidebar() {
 
   return (
     <div
-      className="flex flex-col h-full"
+      className="flex flex-col h-full overflow-hidden"
       onDrop={handleDrop}
       onDragOver={handleDragOver}
     >

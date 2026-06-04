@@ -68,6 +68,13 @@ export const useStore = create<AppState>((set, get) => ({
 
   sendMessage: async (content: string) => {
     const state = get();
+    // Lazily create conversation on backend when first message is sent
+    let convId = state.conversationId;
+    if (!convId) {
+      const { id } = await api.createConversation();
+      convId = id;
+      set({ conversationId: id });
+    }
     const newUserMsg: MessageUnit = {
       id: generateId(),
       message: { role: 'user', content },
@@ -167,14 +174,12 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   createNewConversation: async () => {
-    const { id, created_at } = await api.createConversation();
     set({
-      conversationId: id,
+      conversationId: null,
       messages: [],
       error: null,
       progress: null,
     });
-    get().refreshConversationList();
   },
 
   loadConversation: async (id: string) => {
@@ -203,7 +208,11 @@ export const useStore = create<AppState>((set, get) => ({
   deleteCurrentConversation: async () => {
     const { conversationId } = get();
     if (!conversationId) return;
-    await api.deleteConversation(conversationId);
+    try {
+      await api.deleteConversation(conversationId);
+    } catch (e) {
+      console.error('Delete failed:', e);
+    }
     set({ conversationId: null, messages: [], error: null });
     get().refreshConversationList();
   },
