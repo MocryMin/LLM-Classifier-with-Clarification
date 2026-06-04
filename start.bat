@@ -35,29 +35,24 @@ echo [2/4] Checking frontend dependencies...
 cd web
 if not exist "node_modules" (
     echo   First run: installing frontend deps (~30s)...
-    call npm install --silent 2>nul
+    call npm install
 )
 cd ..
 
-:: Start backend
+:: Start backend (cmd /k keeps window open on error)
 echo [3/4] Starting backend (localhost:8000)...
-start "Baogu Backend" cmd /c "cd /d "%~dp0server" && python main.py"
+start "Baogu Backend" cmd /k "cd /d "%~dp0server" && echo Starting backend... && python main.py 2>&1"
 timeout /t 3 /nobreak >nul
 
-:: Start frontend
+:: Start frontend (cmd /k keeps window open on error)
 echo [4/4] Starting frontend (localhost:5173)...
-start "Baogu Frontend" cmd /c "cd /d "%~dp0web" && npm run dev"
+start "Baogu Frontend" cmd /k "cd /d "%~dp0web" && echo Starting frontend... && npm run dev"
 timeout /t 4 /nobreak >nul
 
 :: Open browser
 echo.
 echo ============================================
-echo   All set! Opening browser...
-echo.
-echo   Backend:  http://localhost:8000
-echo   Frontend: http://localhost:5173
-echo.
-echo   Close the Backend/Frontend windows to stop.
+echo   Opening browser at http://localhost:5173
 echo ============================================
 
 start http://localhost:5173
