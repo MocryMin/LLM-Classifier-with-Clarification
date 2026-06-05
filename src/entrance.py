@@ -518,6 +518,20 @@ def entrance(messages, l0_threshold=0.7, debug=False, region=None):
             dispatch = dispatch_by_risk(l0, l1, make_safe_risk(),
                                         effective_region, debug)
 
+            # 紧急场景也需调用升级处置Agent生成人工介入请求
+            # (V2: urgent = 跳过风险评估，但仍需转人工)
+            escalation_data = _escalate_to_human(
+                messages, l0, ['urgent'], debug=debug
+            )
+            user_comfort = escalation_data.get("user_comfort", "")
+
+            # user_output 组合：紧急指引 + 安抚话术 + 人工介入标记
+            combined_output = dispatch.user_output
+            if user_comfort and user_comfort not in combined_output:
+                combined_output = f"{combined_output}\n\n{user_comfort}"
+            if "###tool_call(human_intervention_api)" not in combined_output:
+                combined_output += "\n###tool_call(human_intervention_api)"
+
             return {
                 "case": 2,
                 "risk_level": None,
@@ -525,11 +539,15 @@ def entrance(messages, l0_threshold=0.7, debug=False, region=None):
                 "tag_dispositions": _build_tag_dispositions(l0),
                 "decision_trail": [],
                 "data": {
-                    "user_output": dispatch.user_output,
-                    "escalate_to_human": dispatch.escalate_to_human,
+                    "user_output": combined_output,
+                    "escalate_to_human": True,
                     "primary_intent": l1.primary_intent,
-                    "tool_calls": dispatch.tool_calls,
-                    "reason": "紧急标记触发，跳过澄清和风险评估，直接推送操作指引",
+                    "tool_calls": dispatch.tool_calls + ["human_intervention_api"],
+                    "call_body": escalation_data.get("call_body",
+                        "###tool_call(human_intervention_api)"),
+                    "situation_brief": escalation_data.get("situation_brief", ""),
+                    "user_comfort": user_comfort,
+                    "reason": "紧急标记触发，跳过澄清和风险评估，直接推送操作指引+转人工",
                 },
             }
 
