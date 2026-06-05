@@ -1,4 +1,4 @@
-# 智能管家 · Chat Playground (V2)
+# 智能管家 · Chat Playground (V2，beta)
 
 基于 LLM 的保险智能客服系统，集成 L0 跨场景标记检测 + L1 意图路由 + **L2 风险评估** + **L3 分级回复**，附带 Web 对话测试工作台。
 
