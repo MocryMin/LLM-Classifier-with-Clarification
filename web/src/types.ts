@@ -39,7 +39,7 @@ export interface Slots {
 }
 
 export interface Operation {
-  type: 'clarify_L1' | 'clarify_slots' | 'direct_reply' | 'route_to_subsidiary' | 'fallback';
+  type: 'clarify_slots' | 'direct_reply' | 'route_to_subsidiary' | 'fallback';
   detail: string;
 }
 
