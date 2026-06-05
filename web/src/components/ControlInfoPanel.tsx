@@ -2,12 +2,16 @@ import { useState, useEffect } from 'react'
 import { ChevronDown, ChevronRight, Copy, HelpCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import type { EntranceResult, Case0Data, Case1Data } from '@/types'
+import type { EntranceResult, Case0Data, Case1Data, EntranceResultCase2, TagDisposition, DecisionTrailItem } from '@/types'
 import { cn, formatJson, truncateText } from '@/utils'
 
 // ─── Help text registry ───────────────────────────────────────
 const HELP: Record<string, string> = {
-  case: 'entrance 路由结果。0 = L0 拦截升级人工，1 = L1 意图路由',
+  case: 'entrance 路由结果。0 = L0 拦截升级人工，1 = L1 意图路由，2 = 紧急直通',
+  risk_level: 'V2 风险评估等级。low=低风险(生成式回复) / medium=中风险(FAQ优先+人工审核) / high=高风险(FAQ+人工) / null=跳过评估',
+  response_mode: 'V2 回复模式。generative=LLM直出 / faq_first=FAQ优先 / faq_only_human=仅FAQ+人工 / direct_guide=紧急操作指引',
+  tag_dispositions: 'V2 L0标签处置动作。escalate=升级人工 / risk_bump=风险+1 / skip_risk=跳过评估 / tone_soften=语气调整 / redirect=引导回业务',
+  decision_trail: 'V2 风险评估决策链。展示每步规则的输入→输出→理由，可审计追溯',
   call_body: '调用人工介入接口的请求体（demo 阶段为固定标记）',
   situation_brief: '向人工坐席的情景快速披露，包含用户是谁/发生什么/检测到什么异常',
   user_comfort: '面向用户的安抚话语，以客服"小保"口吻撰写',
@@ -19,6 +23,11 @@ const HELP: Record<string, string> = {
   operation: '操作决策类型。clarify_L1=一级分类不明确 / clarify_slots=槽位缺失需收集 / direct_reply=集团直接答复 / route_to_subsidiary=路由子公司 / fallback=未覆盖兜底',
   user_output: '面向用户的输出文本，可能内含 ###tool_call(api_name) 标记',
   reason: '意图路由的判断依据，1-2 句中文说明',
+  faq_matched: 'V2 FAQ是否命中。当前FAQ库为空，始终为false',
+  audit_required: 'V2 是否需要人工审核。低风险试点=false，中高风险=true',
+  recommendation: 'V2 问答后推荐（占位，当前始终null）',
+  tool_calls: 'V2 提取的 ###tool_call(api_name) 列表',
+  escalate_to_human: 'V2 是否转人工坐席',
 }
 
 // ─── Field definition ─────────────────────────────────────────
@@ -34,6 +43,20 @@ function extractFields(result: EntranceResult): FieldDef[] {
     { key: 'case', label: 'case', value: result.case, help: HELP.case },
   ]
 
+  // ─── V2 top-level fields (all cases) ───
+  if ('risk_level' in result) {
+    fields.push({ key: 'risk_level', label: 'risk_level', value: result.risk_level, help: HELP.risk_level })
+  }
+  if ('response_mode' in result && result.response_mode) {
+    fields.push({ key: 'response_mode', label: 'response_mode', value: result.response_mode, help: HELP.response_mode })
+  }
+  if ('tag_dispositions' in result && result.tag_dispositions) {
+    fields.push({ key: 'tag_dispositions', label: 'tag_dispositions', value: result.tag_dispositions, help: HELP.tag_dispositions })
+  }
+  if ('decision_trail' in result && result.decision_trail && (result.decision_trail as DecisionTrailItem[]).length > 0) {
+    fields.push({ key: 'decision_trail', label: 'decision_trail', value: result.decision_trail, help: HELP.decision_trail })
+  }
+
   if (result.case === 0) {
     const d = result.data as Case0Data
     fields.push(
@@ -41,6 +64,15 @@ function extractFields(result: EntranceResult): FieldDef[] {
       { key: 'situation_brief', label: 'situation_brief', value: d.situation_brief, help: HELP.situation_brief },
       { key: 'user_comfort', label: 'user_comfort', value: d.user_comfort, help: HELP.user_comfort },
       { key: 'l0_tags', label: 'l0_tags', value: d.l0_tags, help: HELP.l0_tags },
+    )
+  } else if (result.case === 2) {
+    const d = (result as EntranceResultCase2).data
+    fields.push(
+      { key: 'user_output', label: 'user_output', value: d.user_output, help: HELP.user_output },
+      { key: 'escalate_to_human', label: 'escalate_to_human', value: d.escalate_to_human, help: HELP.escalate_to_human },
+      { key: 'primary_intent', label: 'primary_intent', value: d.primary_intent, help: HELP.primary_intent },
+      { key: 'tool_calls', label: 'tool_calls', value: d.tool_calls, help: HELP.tool_calls },
+      { key: 'reason', label: 'reason', value: d.reason, help: HELP.reason },
     )
   } else {
     const d = result.data as Case1Data
@@ -53,6 +85,19 @@ function extractFields(result: EntranceResult): FieldDef[] {
       { key: 'user_output', label: 'user_output', value: d.user_output, help: HELP.user_output },
       { key: 'reason', label: 'reason', value: d.reason, help: HELP.reason },
     )
+    // V2 data fields
+    if (d.faq_matched !== undefined) {
+      fields.push({ key: 'faq_matched', label: 'faq_matched', value: d.faq_matched, help: HELP.faq_matched })
+    }
+    if (d.audit_required !== undefined) {
+      fields.push({ key: 'audit_required', label: 'audit_required', value: d.audit_required, help: HELP.audit_required })
+    }
+    if (d.recommendation !== undefined) {
+      fields.push({ key: 'recommendation', label: 'recommendation', value: d.recommendation, help: HELP.recommendation })
+    }
+    if (d.tool_calls && d.tool_calls.length > 0) {
+      fields.push({ key: 'tool_calls', label: 'tool_calls', value: d.tool_calls, help: HELP.tool_calls })
+    }
   }
 
   return fields
@@ -127,6 +172,50 @@ function ControlField({ field, forceExpand }: { field: FieldDef; forceExpand?: b
   )
 }
 
+// ─── Risk badge ────────────────────────────────────────────────
+function RiskBadge({ level }: { level?: string | null }) {
+  if (!level) return null
+  const colors: Record<string, string> = {
+    low: 'bg-emerald-900/60 text-emerald-300 border-emerald-700',
+    medium: 'bg-amber-900/60 text-amber-300 border-amber-700',
+    high: 'bg-red-900/60 text-red-300 border-red-700',
+  }
+  const labels: Record<string, string> = {
+    low: '低风险',
+    medium: '中风险',
+    high: '高风险',
+  }
+  return (
+    <span className={cn('text-[10px] px-1.5 py-0 border rounded font-mono', colors[level] || 'bg-gray-800 text-gray-400')}>
+      {labels[level] || level}
+    </span>
+  )
+}
+
+function ModeBadge({ mode }: { mode?: string }) {
+  if (!mode) return null
+  const labels: Record<string, string> = {
+    generative: '生成式',
+    faq_first: 'FAQ优先',
+    faq_only_human: 'FAQ+人工',
+    direct_guide: '紧急直通',
+  }
+  return (
+    <span className="text-[10px] px-1.5 py-0 border border-gray-600 rounded font-mono text-gray-400">
+      {labels[mode] || mode}
+    </span>
+  )
+}
+
+function CaseLabel({ result }: { result: EntranceResult }) {
+  const labels: Record<number, string> = {
+    0: 'L0 拦截升级',
+    1: 'L1 意图路由',
+    2: 'L2 紧急直通',
+  }
+  return <span>{labels[result.case] || `case=${result.case}`}</span>
+}
+
 // ─── Main component ────────────────────────────────────────────
 interface Props {
   result: EntranceResult
@@ -135,12 +224,18 @@ interface Props {
 export default function ControlInfoPanel({ result }: Props) {
   const [allExpanded, setAllExpanded] = useState(false)
   const fields = extractFields(result)
+  const riskLevel = 'risk_level' in result ? (result.risk_level as string | null) : null
+  const responseMode = 'response_mode' in result ? (result.response_mode as string) : null
 
   return (
     <div className="mt-2 border border-gray-700 rounded-md overflow-hidden bg-gray-900/50">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-700 bg-gray-900">
-        <span className="text-xs font-medium text-gray-400">控制信息 ({result.case === 0 ? 'L0 拦截升级' : 'L1 意图路由'})</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-gray-400"><CaseLabel result={result} /></span>
+          <RiskBadge level={riskLevel} />
+          <ModeBadge mode={responseMode} />
+        </div>
         <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setAllExpanded(!allExpanded)}>
           {allExpanded ? '全部折叠' : '全部展开'}
         </Button>

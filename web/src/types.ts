@@ -51,19 +51,62 @@ export interface Case1Data {
   operation: Operation;
   user_output: string;
   reason: string;
+  // V2 新增
+  faq_matched?: boolean;
+  audit_required?: boolean;
+  recommendation?: Record<string, unknown> | null;
+  tool_calls?: string[];
+}
+
+// ─── V2: Tag Disposition & Decision Trail ───────────────────
+export interface TagDisposition {
+  action: string;
+  probability: number;
+  triggered: boolean;
+}
+
+export interface DecisionTrailItem {
+  step: string;
+  input_value: string;
+  result: string;
+  reason: string;
 }
 
 export interface EntranceResultCase0 {
   case: 0;
+  risk_level?: string | null;        // V2
+  response_mode?: string;            // V2
+  tag_dispositions?: Record<string, TagDisposition>;  // V2
+  decision_trail?: DecisionTrailItem[];  // V2
   data: Case0Data;
 }
 
 export interface EntranceResultCase1 {
   case: 1;
+  risk_level?: string | null;        // V2
+  response_mode?: string;            // V2
+  tag_dispositions?: Record<string, TagDisposition>;  // V2
+  decision_trail?: DecisionTrailItem[];  // V2
   data: Case1Data;
 }
 
-export type EntranceResult = EntranceResultCase0 | EntranceResultCase1;
+// V2: case=2 紧急直通
+export interface EntranceResultCase2 {
+  case: 2;
+  risk_level: null;
+  response_mode: string;
+  tag_dispositions: Record<string, TagDisposition>;
+  decision_trail: DecisionTrailItem[];
+  data: {
+    user_output: string;
+    escalate_to_human: boolean;
+    primary_intent?: IntentResult;
+    tool_calls?: string[];
+    reason?: string;
+  };
+}
+
+export type EntranceResult = EntranceResultCase0 | EntranceResultCase1 | EntranceResultCase2;
 
 // ─── UI message unit (message + optional entrance result) ────
 export interface MessageUnit {
