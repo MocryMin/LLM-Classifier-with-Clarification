@@ -190,8 +190,49 @@ function TagTable({ value }: { value: unknown }) {
   const obj = value as Record<string, unknown>
   const entries = Object.entries(obj)
 
-  // Detect if it's a tag disposition table (nested objects with action/probability)
-  const isDisposition = entries.length > 0 && typeof entries[0][1] === 'object' && entries[0][1] !== null
+  // Detect table type by inspecting nested object structure
+  const firstNested = entries.length > 0 && typeof entries[0][1] === 'object' && entries[0][1] !== null
+    ? (entries[0][1] as Record<string, unknown>)
+    : null
+
+  // Case A: intent candidates (objects with l1/l2 keys) → rank | l1 | l2 | prob
+  const isCandidateList = firstNested && 'l1' in firstNested && 'l2' in firstNested
+
+  // Case B: tag dispositions (objects with action key) → tag | action | prob | 触发
+  const isDisposition = firstNested && 'action' in firstNested
+
+  if (isCandidateList) {
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-gray-500 border-b border-gray-800">
+              <th className="text-right py-1 pr-2 font-medium w-6">#</th>
+              <th className="text-left py-1 pr-2 font-medium">l1</th>
+              <th className="text-left py-1 pr-2 font-medium">l2</th>
+              <th className="text-right py-1 font-medium">prob</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map(([idx, info], i) => {
+              const d = info as Record<string, unknown>
+              const isTop = i === 0
+              return (
+                <tr key={idx} className={cn('border-b border-gray-800/50', isTop && 'bg-emerald-900/20')}>
+                  <td className="py-1 pr-2 text-right text-gray-500 font-mono">{Number(idx) + 1}</td>
+                  <td className="py-1 pr-2 text-gray-400 font-mono text-[10px]">{String(d.l1 || '-')}</td>
+                  <td className="py-1 pr-2 text-gray-300 font-mono">{String(d.l2 || '-')}</td>
+                  <td className="py-1 text-right text-gray-300 font-mono">
+                    {typeof d.probability === 'number' ? d.probability.toFixed(2) : '-'}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
 
   if (isDisposition) {
     return (

@@ -200,6 +200,44 @@ def _try_parse_json(text):
 # 主入口：一次调用，全部搞定
 # ============================================================
 
+def _enforce_clarification_rules(result: dict) -> dict:
+    """
+    后处理：强制执行 prompt 中的澄清规则。
+    LLM 不一定遵守自己 prompt 中的置信度阈值，这里做代码级兜底。
+
+    规则：
+      A. primary_intent.confidence < 0.7 → 强制澄清
+      B. top-1 和 top-2 的概率差 < 0.2 → 强制澄清
+      例外：核保(2.8)/核赔(2.9)/欢迎引导(1.1) 跳过强制
+    """
+    scene = result.get('primary_intent', {}).get('l2', '')
+
+    # 例外场景：这些场景明确不需要澄清
+    SKIP_ENFORCEMENT = {'核保', '核赔', '欢迎引导'}
+    if scene in SKIP_ENFORCEMENT:
+        return result
+
+    confidence = result.get('primary_intent', {}).get('confidence', 0)
+    top_candidates = result.get('top_candidates', [])
+    top2_prob = top_candidates[0].get('probability', 0) if top_candidates else 0
+    gap = confidence - top2_prob if top2_prob else 1.0
+
+    should_clarify = confidence < 0.7 or gap < 0.2
+
+    if should_clarify and not result.get('needs_clarification'):
+        result['needs_clarification'] = True
+        op = result.get('operation', {})
+        if op.get('type') not in ('clarify_L1', 'clarify_slots'):
+            result['operation'] = {
+                'type': 'clarify_L1',
+                'detail': f'[强制] confidence={confidence:.2f}, gap={gap:.2f}，触发澄清',
+            }
+        if result.get('reason'):
+            result['reason'] += f' [强制澄清: conf={confidence:.2f}, gap={gap:.2f}]'
+
+    return result
+
+
 def purpose_route(messages, debug=False, max_json_retries=2):
     """
     L1 意图路由 —— 单次 LLM 调用完成：
@@ -232,6 +270,9 @@ def purpose_route(messages, debug=False, max_json_retries=2):
         result, ok = _try_parse_json(raw)
 
         if ok:
+            result = _enforce_clarification_rules(result)
+            if debug and result.get('needs_clarification') and '[强制' in result.get('reason', ''):
+                print(f'[L1] 澄清规则强制触发: {result["reason"]}')
             return result
 
         if attempt < max_json_retries:
