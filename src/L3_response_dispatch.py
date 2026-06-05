@@ -205,26 +205,33 @@ def _faq_first_reply(l0: L0Output, l1: L1Output, risk: RiskOutput,
 
 def _faq_only_human(l0: L0Output, l1: L1Output, risk: RiskOutput,
                     region: str) -> DispatchResult:
-    """高风险：不生成LLM回复，FAQ+人工工单"""
+    """高风险：不生成LLM回复文本，但保留子公司API调用。FAQ+人工工单"""
     scene = l1.primary_intent.get("l2", "") if l1.primary_intent else ""
     filled = l1.slots.filled_slots if l1.slots else {}
+
+    # 提取 L1 输出中的 tool_call（即使替换文本，API 调用仍需保留）
+    l1_tool_calls = _extract_tool_calls(l1.user_output)
 
     faq = query_faq(scene, filled)
 
     if faq:
         user_output = faq["content"]
     else:
-        user_output = (
-            "您的问题已收到。由于涉及重要业务，"
-            "我们的人工客服将尽快与您联系确认。"
-            "服务时间：每日 9:00-21:00。"
-            "您也可以拨打 95500 客服热线。"
-        )
+        # 场景有子公司API时：简短过渡语 + tool_call
+        if l1_tool_calls:
+            user_output = f"正在为您处理，请稍候...\n###tool_call({l1_tool_calls[0]})"
+        else:
+            user_output = (
+                "您的问题已收到。由于涉及重要业务，"
+                "我们的人工客服将尽快与您联系确认。"
+                "服务时间：每日 9:00-21:00。"
+                "您也可以拨打 95500 客服热线。"
+            )
 
     return DispatchResult(
         response_mode="faq_only_human",
         user_output=user_output,
-        tool_calls=[],
+        tool_calls=l1_tool_calls,
         faq_matched=faq is not None,
         recommendation=None,
         audit_required=True,
@@ -264,6 +271,29 @@ def _direct_guidance(l0: L0Output, l1: L1Output) -> DispatchResult:
         escalate_to_human=True,
         tone_modifier="",
     )
+
+
+# ============================================================
+# Sad 语气软化
+# ============================================================
+
+_SAD_PREFIXES = [
+    "小保理解您此刻的心情，会尽全力帮助您。",
+    "小保明白，这对您来说一定很不容易。",
+    "小保能感受到您的难过，请放心，我们会认真对待。",
+    "请节哀，小保会陪您一起处理好这件事。",
+    "听到这个消息，小保也很难过。让我们一步一步来处理。",
+]
+
+
+def _sad_tone_soften(user_output: str) -> str:
+    """
+    当sad标记触发时，在用户输出前添加温和的共情前缀。
+    不修改原输出内容，仅改变语气——保守的微调策略。
+    """
+    import random
+    prefix = _SAD_PREFIXES[hash(user_output) % len(_SAD_PREFIXES)]
+    return f"{prefix}\n\n{user_output}"
 
 
 # ============================================================
@@ -329,6 +359,12 @@ def dispatch_by_risk(
                   f"audit={result.audit_required}, "
                   f"escalate={result.escalate_to_human}")
             print(f"[Dispatch] output: {result.user_output[:120]}...")
+
+        # Sad 语气软化：在回复前添加共情前缀（不影响 tool_call 和其他逻辑）
+        sad_tag = l0.tags.get("sad")
+        if sad_tag and sad_tag.triggered and result.response_mode != "direct_guide":
+            result.user_output = _sad_tone_soften(result.user_output)
+            result.tone_modifier = "sad"
 
         return result
 
