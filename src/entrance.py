@@ -4,41 +4,197 @@
 │                    项目唯一对外接口 · 四阶段管道编排                            │
 └─────────────────────────────────────────────────────────────────────────────┘
 
-=== V2 管道 ==================================================================
+=== V2 管道架构 ==============================================================
 
-  messages
+  messages (list[dict], OpenAI format)
       │
       ▼
   ┌──────────────┐  ┌──────────────┐
-  │ Stage 0: L0   │  │ Stage 1: L1   │  ← 并行
+  │ Stage 0: L0   │  │ Stage 1: L1   │  ← 并行发射 (ThreadPoolExecutor)
   │ tag_judge_v2  │  │ purpose_route │
+  │ → L0Output    │  │ → L1Output    │
   └──────┬───────┘  └──────┬───────┘
          └────────┬────────┘
                   ▼
          ┌───────────────┐
-         │ Stage 2: Risk  │  ← 规则引擎
+         │ Stage 2: Risk  │  ← 规则引擎 (零LLM, 决策链可审计)
          │ assess_risk    │
+         │ → RiskOutput   │
          └──────┬────────┘
                 ▼
          ┌───────────────┐
-         │ Stage 3:       │  ← 三级回复分派
-         │ dispatch       │
+         │ Stage 3:       │  ← 三级回复分派 (生成式/FAQ优先/FAQ+人工)
+         │ dispatch_by_   │
+         │ risk()         │
+         │ → DispatchResult
          └──────┬────────┘
                 ▼
-         PipelineResult
+         dict (→ JSON → GUI)
+
+  墙钟耗时: max(L0, L1) + Risk(~0ms) + Dispatch(~0ms)
+  L0: ~22 flash API calls (并行SC); L1: ~2 pro API calls
+  Risk + Dispatch: 纯代码, < 1ms
 
 === 调用方式 =================================================================
 
       from entrance import entrance
 
-      result = entrance(messages)
-      result = entrance(messages, l0_threshold=0.5)
-      result = entrance(messages, debug=True)
+      result = entrance(messages)                        # 最简调用
+      result = entrance(messages, l0_threshold=0.5)      # 自定义阈值
+      result = entrance(messages, debug=True)            # 打印全链路调试日志
+      result = entrance(messages, region="pilot")        # 指定试点地区
 
-=== 返回 =====================================================================
+  参数:
+      messages     : list[dict]  OpenAI格式对话历史 (必填)
+      l0_threshold : float = 0.7 L0拦截灵敏度 (可选)
+      debug        : bool = False 打印调试日志 (可选)
+      region       : str | None  地区: "pilot" | "non_pilot" (可选)
 
-  统一格式: {"case": 0|1|2, "risk_level": ..., "response_mode": ..., "data": {...}}
-  与V1向后兼容 — case字段保留，data字段扩展。
+=== 返回结构 =================================================================
+
+  ── case = 0 ── L0 manual 拦截 → 升级人工处置 ────────────────────────────
+
+      {
+        "case": 0,
+        "risk_level": "high",
+        "response_mode": "faq_only_human",
+        "tag_dispositions": {
+            "manual":  {"action": "escalate", "probability": 1.0, "triggered": true},
+            "angry":   {"action": "risk_bump", "probability": 0.93, "triggered": true},
+            "urgent":  {"action": "none", "probability": 0.02, "triggered": false},
+            "sad":     {"action": "none", "probability": 0.04, "triggered": false},
+            "non_biz": {"action": "none", "probability": 0.0, "triggered": false}
+        },
+        "decision_trail": [],
+        "data": {
+            "call_body": "###tool_call(human_intervention_api)",
+            "situation_brief": "...",
+            "user_comfort": "...",
+            "l0_tags": {"manual": 1.0, "angry": 0.93, ...}
+        }
+      }
+
+  ── case = 1 ── 正常路由 → L1意图 + 风险评估 + 分级回复 ──────────────────
+
+      {
+        "case": 1,
+        "risk_level": "medium",          # low | medium | high
+        "response_mode": "faq_first",    # generative | faq_first | faq_only_human
+        "tag_dispositions": {...},
+        "decision_trail": [              # 风险评估决策链 (可审计)
+            {"step": "scene_base", "input_value": "车险投保",
+             "result": "medium", "reason": "场景'车险投保'基础风险=medium"},
+            {"step": "angry_bump", "input_value": "angry=0.85",
+             "result": "risk+1", "reason": "愤怒标记触发，风险等级+1"}
+        ],
+        "data": {
+            "primary_intent": {"l1": "售前服务", "l2": "车险投保", "confidence": 0.92},
+            "top_candidates": [...],
+            "needs_clarification": true,
+            "slots": {"all_slots": [...], "filled_slots": {...}, "missing_slots": [...]},
+            "operation": {"type": "clarify_slots", "detail": "..."},
+            "user_output": "...",
+            "reason": "...",
+            "faq_matched": false,
+            "audit_required": true,
+            "recommendation": null,
+            "tool_calls": [...]
+        }
+      }
+
+  ── case = 2 ── L0 urgent 触发 → 跳过澄清+风险评估, 直接操作指引 ──────────
+
+      {
+        "case": 2,
+        "risk_level": null,
+        "response_mode": "direct_guide",
+        "tag_dispositions": {...},
+        "decision_trail": [],
+        "data": {
+            "user_output": "请立即拨打 95500...",
+            "escalate_to_human": true,
+            "primary_intent": {...},
+            "tool_calls": [...],
+            "reason": "紧急标记触发，跳过澄清和风险评估"
+        }
+      }
+
+============================================================================
+GUI 协议: 约定优于配置 (Convention over Configuration)
+============================================================================
+  后续 V3/V4/V5 内核迭代 —— 无需修改GUI代码。只需遵循以下约定：
+
+  【规则1】返回 dict 的顶级 key 使用 snake_case
+  【规则2】data 子 key 存放业务数据，GUI 会自动发现并展示
+  【规则3】key 命名后缀决定 GUI 渲染器:
+
+      *_level           → 彩色风险badge (识别 low/medium/high)
+      *_mode            → 模式badge
+      *_tags            → 键值表 (含 action/probability/triggered 列)
+      *_dispositions    → 键值表 (同上)
+      *_candidates      → 键值表
+      *_trail           → 步骤时间线 (数组对象, 含 step/result/reason)
+      *_required        → 绿/红 布尔badge
+      *_matched         → 绿/红 布尔badge
+      *_to_human        → 绿/红 布尔badge
+      bool 值            → 绿/红 布尔badge (自动检测)
+      dict / list       → 可展开 JSON 树
+      str / int / float → 纯文本
+
+  【V3 扩展示例】只需在 return dict 中添加新 key:
+
+      return {
+          "case": 1,
+          "risk_level": "medium",
+          "response_mode": "faq_first",
+          # V3 新增 —— GUI 自动发现并渲染，无需任何前端改动
+          "compliance_level": "pass",       # *_level → 绿色badge
+          "audit_mode": "post_review",      # *_mode → 模式badge
+          "model_tags": {"l0": "flash"},    # *_tags → 表格
+          "audit_trail": [...],             # *_trail → 步骤时间线
+          "human_review_required": False,   # *_required → 布尔badge
+          "latency_ms": 342,                # number → 数字
+          "data": {...},
+      }
+
+  优先级排序: 已知字段按预设顺序，未知顶级 key 排中间(priority=50)，
+  未知 data key 排末尾(priority=300)。参见 ControlInfoPanel.tsx:getPriority()
+
+=== 模块依赖链 ===============================================================
+
+  entrance.py
+   ├── src/L0_tag_judge.py  ── tag_judge_v2() → L0Output
+   │    ├── prompt/tag_*.txt  (5 个判别性标签 prompt)
+   │    └── build_l0_output() (tag → disposition 映射, V2新增)
+   ├── src/L1_purpose.py    ── purpose_route() → L1Output
+   │    ├── prompt/L1_intent_router.txt  (32场景, 含few-shot/反臆想)
+   │    └── build_l1_output() (V2新增)
+   ├── src/L2_risk_assess.py ── assess_risk() → RiskOutput (V2新增)
+   │    └── 规则引擎: 场景映射 + tag修饰 + 合规关键词
+   ├── src/L3_response_dispatch.py ── dispatch_by_risk() → DispatchResult (V2新增)
+   │    └── 三级分流: generative / faq_first / faq_only_human
+   ├── src/pipeline_types.py ── 阶段间数据结构定义 (V2新增)
+   └── prompt/escalation.txt ── 升级处置 LLM prompt (V2适配)
+
+  LLM 用量:
+    L0 判别性标签:  deepseek-v4-flash (×~20)
+    L1 意图路由:    deepseek-v4-pro   (×~2)
+    升级处置:       deepseek-v4-flash (×1)
+    (L0 与 L1 并行; 升级处置仅 case=0 时串行)
+
+=== 配置 =====================================================================
+
+  API key / base_url 修改处: 本文件顶部 client = OpenAI(...) 行
+  拦截阈值默认值修改处: entrance() 函数签名的 l0_threshold 参数
+  试点地区配置: src/L3_response_dispatch.py PILOT_REGIONS
+  风险映射表: src/L2_risk_assess.py SCENE_RISK_MAP
+  Prompt模板: prompt/L1_intent_router.txt
+
+=== 测试 =====================================================================
+
+      python src/entrance.py         # 5组全真测试 (需API key)
+      python src/L2_risk_assess.py   # 7组规则引擎单元测试
+      python src/L3_response_dispatch.py  # 6组分派单元测试
 """
 
 import os
