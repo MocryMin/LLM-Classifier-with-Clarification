@@ -82,7 +82,7 @@ const HELP: Record<string, string> = {
   top_candidates: '概率>0.1的候选意图列表',
   needs_clarification: '是否需要向用户发起澄清',
   slots: '槽位信息。all_slots=全部 / filled_slots=已填 / missing_slots=缺失',
-  operation: '操作决策类型。clarify_slots=收集槽位 / direct_reply=直接答复 / route_to_subsidiary=路由子公司 / fallback=兜底',
+  operation: '操作决策类型。direct_reply=集团直接答复 / route_to_subsidiary=路由子公司(含tool_call) / fallback=兜底。L1不收集槽位',
   user_output: '面向用户的输出文本',
   reason: '判断依据',
   faq_matched: 'FAQ是否命中（当前FAQ库为空）',

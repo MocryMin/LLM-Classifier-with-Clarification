@@ -2,8 +2,11 @@
 L1 意图路由层 (Purpose Router)
 ================================
 
-单次 LLM 调用，同时完成：
-  意图分类 → 槽位提取 → 澄清判断 → 操作决策 → 用户输出生成。
+单次 LLM 调用，完成：
+  意图分类 → 意图澄清（仅当竞争激烈时）→ 路由输出。
+
+V2.1 架构变更：L1 只负责意图路由，不收集槽位。
+槽位收集（被保人年龄/车牌号/健康信息等）由下层agent负责。
 
 ----
 入口函数
@@ -14,8 +17,6 @@ L1 意图路由层 (Purpose Router)
 
 参数:
     messages          : list[dict]   — OpenAI 格式完整对话历史
-                        每条: {"role": "user"|"assistant", "content": "..."}
-                        role="system" 的消息会被自动跳过
     debug             : bool         — True 时打印原始 LLM JSON (调试用)
     max_json_retries  : int          — JSON 解析失败时重试次数 (默认 2)
 
@@ -29,19 +30,11 @@ L1 意图路由层 (Purpose Router)
         "top_candidates": [         # 概率 >0.1 的候选意图
             {"l1": str, "l2": str, "probability": float}, ...
         ],
-        "needs_clarification": bool, # 是否需要向用户发起澄清
-        "slots": {                   # needs_clarification=false 时全为空
-            "all_slots": [          # 该场景全部待填槽位
-                {"name": str, "description": str, "options": [str,...]}, ...
-            ],
-            "filled_slots": {str: str},  # 对话中已提取的 {槽位名: 值}
-            "missing_slots": [str, ...]  # 尚未填写的槽位名
-        },
+        "needs_clarification": bool, # 仅指意图竞争（非槽位澄清）
         "operation": {
-            "type": str,            # clarify_slots  — 槽位缺失需收集
-                                    # direct_reply   — 集团直接答复
+            "type": str,            # direct_reply        — 集团直接答复
                                     # route_to_subsidiary — 路由子公司 (含 ###tool_call)
-                                    # fallback       — 未覆盖兜底
+                                    # fallback            — 未覆盖兜底
             "detail": str           # 操作说明
         },
         "user_output": str,         # 面向用户的输出文本
@@ -53,9 +46,8 @@ L1 意图路由层 (Purpose Router)
     result = purpose_route([
         {"role": "user", "content": "我要买车险，帮我报个价"}
     ])
-    # result["operation"]["type"]   → "clarify_slots"
-    # result["slots"]["missing_slots"] → ["车牌号","车型年份","使用性质",...]
-    # result["user_output"]         → "您好，帮您精准计算车险方案。请提供..."
+    # result["operation"]["type"]   → "route_to_subsidiary"
+    # result["user_output"]         → "...\n###tool_call(auto_insure_api)"
 
     result = purpose_route([
         {"role": "user", "content": "我的车被撞了，要报案"}
@@ -148,11 +140,6 @@ def _make_fallback_result(reason='JSON parse error, fallback'):
         'primary_intent': {'l1': '', 'l2': '', 'confidence': 0.0},
         'top_candidates': [],
         'needs_clarification': True,
-        'slots': {
-            'all_slots': [],
-            'filled_slots': {},
-            'missing_slots': [],
-        },
         'operation': {
             'type': 'direct_reply',
             'detail': '解析失败，兜底回复',
@@ -181,11 +168,6 @@ def _try_parse_json(text):
         result.setdefault('primary_intent', {'l1': '', 'l2': '', 'confidence': 0.0})
         result.setdefault('top_candidates', [])
         result.setdefault('needs_clarification', False)
-        result.setdefault('slots', {
-            'all_slots': [],
-            'filled_slots': {},
-            'missing_slots': [],
-        })
         result.setdefault('operation', {'type': 'direct_reply', 'detail': ''})
         result.setdefault('user_output', '')
         result.setdefault('reason', '')
@@ -264,32 +246,21 @@ def build_l1_output(raw_result: dict):
     """
     将 purpose_route 的原始 dict 返回包装为 L1Output。
 
+    V2.1: L1不再负责槽位收集。即使LLM偶尔输出slots字段，也忽略。
+
     Args:
         raw_result: dict, purpose_route 的返回值
 
     Returns:
         L1Output
     """
-    from pipeline_types import L1Output, SlotsInfo, SlotDef
+    from pipeline_types import L1Output, SlotsInfo
 
     # 提取场景名
     scene = raw_result.get("primary_intent", {}).get("l2", "")
 
-    # 转换槽位
-    raw_slots = raw_result.get("slots", {})
-    all_slots = []
-    for s in raw_slots.get("all_slots", []):
-        all_slots.append(SlotDef(
-            name=s.get("name", ""),
-            description=s.get("description", ""),
-            options=s.get("options", []),
-        ))
-
-    slots = SlotsInfo(
-        all_slots=all_slots,
-        filled_slots=raw_slots.get("filled_slots", {}),
-        missing_slots=raw_slots.get("missing_slots", []),
-    )
+    # V2.1: L1 不收集槽位，始终返回空 SlotsInfo
+    slots = SlotsInfo(all_slots=[], filled_slots={}, missing_slots=[])
 
     return L1Output(
         primary_intent=raw_result.get("primary_intent", {}),
