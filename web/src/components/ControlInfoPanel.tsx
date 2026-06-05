@@ -331,7 +331,8 @@ function ValueDisplay({ hint, value }: { hint: RenderHint; value: unknown }) {
 // ─── Single field row ──────────────────────────────────────────
 function ControlField({ field, forceExpand }: { field: FieldDef; forceExpand?: boolean }) {
   const [expanded, setExpanded] = useState(false)
-  const isComplex = field.hint !== 'text' && field.hint !== 'badge:bool'
+  const isLongText = typeof field.value === 'string' && field.value.length > 80
+  const isComplex = isLongText || (field.hint !== 'text' && field.hint !== 'badge:bool')
 
   useEffect(() => {
     if (forceExpand !== undefined) setExpanded(forceExpand)
