@@ -243,6 +243,69 @@ def purpose_route(messages, debug=False, max_json_retries=2):
 
 
 # ============================================================
+# V2 新增: L1Output 包装
+# ============================================================
+
+# 32场景→风险等级映射（与L2_risk_assess共享，此处独立维护以避免循环导入）
+_SCENE_RISK_MAP = {
+    "欢迎引导": "low", "意图澄清": "low", "未覆盖兜底": "low",
+    "产品咨询": "low", "服务介绍": "low", "行权使用": "low",
+    "高频权益": "low", "客服热线": "low",
+    "健康险投保": "medium", "车险投保": "medium", "寿险/年金投保": "medium",
+    "意外险投保": "medium", "其他险种投保": "medium", "明确产品": "medium",
+    "承保/保单获取": "medium", "保单查询": "medium", "续期缴费": "medium",
+    "保单变更": "medium", "理赔报案": "medium", "理赔进度查询": "medium",
+    "权益查询": "medium", "业务员联系": "medium", "网点查询": "medium",
+    "核保": "high", "核赔": "high", "退保/减保": "high",
+    "保单贷款/还款": "high", "分红/年金/领取": "high", "保单复效": "high",
+    "理赔材料/条件": "high", "撤销报案": "high", "投诉建议": "high",
+}
+
+
+def build_l1_output(raw_result: dict):
+    """
+    将 purpose_route 的原始 dict 返回包装为 L1Output。
+
+    Args:
+        raw_result: dict, purpose_route 的返回值
+
+    Returns:
+        L1Output
+    """
+    from pipeline_types import L1Output, SlotsInfo, SlotDef
+
+    # 提取场景名
+    scene = raw_result.get("primary_intent", {}).get("l2", "")
+
+    # 转换槽位
+    raw_slots = raw_result.get("slots", {})
+    all_slots = []
+    for s in raw_slots.get("all_slots", []):
+        all_slots.append(SlotDef(
+            name=s.get("name", ""),
+            description=s.get("description", ""),
+            options=s.get("options", []),
+        ))
+
+    slots = SlotsInfo(
+        all_slots=all_slots,
+        filled_slots=raw_slots.get("filled_slots", {}),
+        missing_slots=raw_slots.get("missing_slots", []),
+    )
+
+    return L1Output(
+        primary_intent=raw_result.get("primary_intent", {}),
+        top_candidates=raw_result.get("top_candidates", []),
+        needs_clarification=raw_result.get("needs_clarification", False),
+        slots=slots,
+        operation=raw_result.get("operation", {}),
+        user_output=raw_result.get("user_output", ""),
+        reason=raw_result.get("reason", ""),
+        scene_risk_base=_SCENE_RISK_MAP.get(scene, "medium"),
+    )
+
+
+# ============================================================
 # 测试入口
 # ============================================================
 

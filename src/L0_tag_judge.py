@@ -600,3 +600,63 @@ def tag_judge_v2(messages, ez_judge=0, k=5):
     results['manual'] = 1.0 if results['manual'] else 0.0
 
     return results
+
+
+# ============================================================
+# V2 新增: Tag Disposition 映射
+# ============================================================
+
+# Tag 处置规则表（来源：V2 跨场景标记）
+# 优先级: manual > urgent > angry > sad > non_biz
+_TAG_PRIORITY = ['manual', 'urgent', 'angry', 'sad', 'non_biz']
+
+_TAG_ACTION_MAP = {
+    'manual':  {'action': 'escalate',     'risk_modifier': 999, 'skip_clarify': True},
+    'angry':   {'action': 'risk_bump',    'risk_modifier': 1,   'skip_clarify': True},
+    'urgent':  {'action': 'skip_risk',    'risk_modifier': 0,   'skip_clarify': True},
+    'sad':     {'action': 'tone_soften',  'risk_modifier': 0,   'skip_clarify': False},
+    'non_biz': {'action': 'redirect',     'risk_modifier': 0,   'skip_clarify': False},
+}
+
+
+def build_l0_output(raw_results: dict[str, float], threshold: float = 0.7):
+    """
+    将 tag_judge_v2 的原始返回转换为 V2 的 L0Output（含 tag 处置动作）。
+
+    Args:
+        raw_results: dict, tag_judge_v2 的返回值
+                     {'manual': float, 'angry': float, ...}
+        threshold:   float, 拦截阈值
+
+    Returns:
+        L0Output
+    """
+    # 延迟导入避免循环依赖
+    from pipeline_types import TagResult, L0Output
+
+    tags = {}
+    for tag_type in ['manual', 'angry', 'urgent', 'sad', 'non_biz']:
+        prob = raw_results.get(tag_type, 0.0)
+        triggered = prob >= threshold
+        action_info = _TAG_ACTION_MAP.get(tag_type, {})
+
+        tags[tag_type] = TagResult(
+            tag_type=tag_type,
+            probability=prob,
+            triggered=triggered,
+            action=action_info.get('action', 'none') if triggered else 'none',
+            risk_modifier=action_info.get('risk_modifier', 0) if triggered else 0,
+            skip_clarification=action_info.get('skip_clarify', False) if triggered else False,
+        )
+
+    # 优先级处理: 多tag触发时取最高优先级
+    # 实际上各tag独立保持其action，不做互斥
+    should_escalate = tags['manual'].triggered
+    should_skip_risk = tags['urgent'].triggered
+
+    return L0Output(
+        tags=tags,
+        should_escalate=should_escalate,
+        should_skip_risk=should_skip_risk,
+        raw_probabilities=raw_results,
+    )

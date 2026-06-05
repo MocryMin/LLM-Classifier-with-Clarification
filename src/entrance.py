@@ -1,195 +1,44 @@
 """
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                    entrance.py — 智能管家路由层统一入口                       │
-│                    项目唯一对外接口 · Agent 协同规范                           │
+│                    entrance.py — 智能管家路由层统一入口 (V2)                  │
+│                    项目唯一对外接口 · 四阶段管道编排                            │
 └─────────────────────────────────────────────────────────────────────────────┘
 
-=== 概述 =====================================================================
+=== V2 管道 ==================================================================
 
-  本模块是"智能管家"项目的顶层路由入口 — 所有外部调用者只需调用一个函数：
-  `entrance(messages)`，即可完成 L0 → L1 全链路处理。
-
-  调用者无需了解 L0 / L1 的内部实现，只需传入标准 messages 列表，根据返回
-  的 case 值分流处理即可。
+  messages
+      │
+      ▼
+  ┌──────────────┐  ┌──────────────┐
+  │ Stage 0: L0   │  │ Stage 1: L1   │  ← 并行
+  │ tag_judge_v2  │  │ purpose_route │
+  └──────┬───────┘  └──────┬───────┘
+         └────────┬────────┘
+                  ▼
+         ┌───────────────┐
+         │ Stage 2: Risk  │  ← 规则引擎
+         │ assess_risk    │
+         └──────┬────────┘
+                ▼
+         ┌───────────────┐
+         │ Stage 3:       │  ← 三级回复分派
+         │ dispatch       │
+         └──────┬────────┘
+                ▼
+         PipelineResult
 
 === 调用方式 =================================================================
 
       from entrance import entrance
 
-      result = entrance(messages)               # 最简调用（阈值 0.7）
-      result = entrance(messages, l0_threshold=0.5)  # 放宽拦截阈值
-      result = entrance(messages, debug=True)   # 打印全链路调试日志
-
-=== 输入 =====================================================================
-
-  messages : list[dict]    （必填）OpenAI 格式完整对话历史
-
-    每条消息格式：
-      {"role": "user",       "content": "我要转人工"}
-      {"role": "assistant",  "content": "您好，请问有什么可以帮您？"}
-
-    约束：
-      - role 为 "user" 或 "assistant"；"system" 会被内部跳过
-      - 按时间顺序排列，最后一条为最新消息
-      - 长度无限制，但建议截取最近 20 轮以控制 LLM 上下文
-
-  l0_threshold : float = 0.7  （可选）L0 拦截灵敏度
-
-    阈值越低越敏感 —— 更多对话被判定为"需升级人工"而提前拦截：
-      0.7  推荐值：高置信拦截，兼顾精确率和召回率
-      0.5  宽松值：宁可多拦不漏，适用于安全优先场景
-      0.3  仅供参考：几乎全部拦截
-
-  debug : bool = False        （可选）是否打印全链路调试日志
-
-=== 流水线 ===================================================================
-
-  调用 entrance() 后，L0 和 L1 并行发射以降低用户延迟：
-
-    ┌──────────────────────────────────────────────────────────┐
-    │          ThreadPoolExecutor(max_workers=2)               │
-    │  ┌─────────────────────┐  ┌───────────────────────────┐  │
-    │  │ L0 tag_judge_v2()   │  │ L1 purpose_route()        │  │
-    │  │ ~22 flash 调用       │  │ ~2 pro 调用               │  │
-    │  └──────┬──────────────┘  └─────────────┬─────────────┘  │
-    └─────────┼───────────────────────────────┼────────────────┘
-              │ (先返回)                        │
-     ┌────────▼────────┐                        │
-     │ L0 任一标签      │                        │
-     │ ≥ 阈值 ?         │                        │
-     └──┬───────────┬──┘                        │
-        │ YES       │ NO                        │
-        ▼           ▼                           │
-    ┌──────────┐  ┌────────────────────┐        │
-    │ 升级处置  │  │ 等待 L1 结果       │◄───────┘
-    │ ~1 flash │  └────────┬───────────┘
-    └────┬─────┘           ▼
-         ▼          return {case: 1, ...}
-  return {case: 0, ...}
-
-  墙钟耗时：max(L0, L1) + (仅 case=0 时 +1 次 escalation)，相比串行 L0+L1 显著降低。
+      result = entrance(messages)
+      result = entrance(messages, l0_threshold=0.5)
+      result = entrance(messages, debug=True)
 
 === 返回 =====================================================================
 
-  统一返回格式：{"case": 0|1, "data": {...}}
-
-  ── case = 0 ── L0 拦截 → 升级人工处置 ─────────────────────────────────────
-
-      {
-        "case": 0,
-        "data": {
-          "call_body":       "###tool_call(human_intervention_api)",
-          "situation_brief": "<向人工坐席的情景快速披露，2-4 句中文>",
-          "user_comfort":    "<面向用户的安抚话语，2-4 句中文，客服口吻>",
-          "l0_tags":         {"manual": 1.0, "angry": 0.93, "sad": 0.04,
-                              "urgent": 0.04, "non_biz": 0.0}
-        }
-      }
-
-      字段说明：
-        call_body       : str   固定值，标记调用人工介入接口（demo 简化）
-        situation_brief : str   向接手的人工坐席简述：用户是谁/发生了什么/
-                                系统检测到什么异常/建议关注点
-        user_comfort    : str   以客服"小保"口吻安抚用户，体现共情，同时告知
-                                已安排人工处理。根据触发标签和情绪程度自适应
-        l0_tags         : dict  5 个 L0 标签的原始 01 概率值，供上层调试/日志
-
-      触发该分支的 L0 标签（任一 ≥ 阈值即触发）：
-        manual  ≥ threshold  → 用户 ≥2 次表达转人工意图
-        angry   ≥ threshold  → 愤怒/不满情绪
-        sad     ≥ threshold  → 悲伤情绪
-        urgent  ≥ threshold  → 紧急语境
-        non_biz ≥ threshold  → 非业务闲聊
-
-  ── case = 1 ── L0 通过 → L1 意图路由 ───────────────────────────────────────
-
-      {
-        "case": 1,
-        "data": {
-          "primary_intent": {
-            "l1": "售前服务",          // 一级意图  (6 大类之一)
-            "l2": "车险投保",          // 二级意图  (30 个子场景之一)
-            "confidence": 0.95        // 置信度 [0, 1]
-          },
-          "top_candidates": [          // 概率 >0.1 的候选意图，按降序
-            {"l1": "售前服务", "l2": "车险投保", "probability": 0.95}
-          ],
-          "needs_clarification": true, // 是否需要向用户发起澄清
-          "slots": {                   // needs_clarification=true 时有意义
-            "all_slots": [             // 当前场景全部待填槽位
-              {"name": "车牌号",
-               "description": "车辆牌照号码",
-               "options": []}          // options 为空表示自由文本
-            ],
-            "filled_slots": {          // 对话中已提取的值
-              "保障需求": "交强险+商业险"
-            },
-            "missing_slots": ["车牌号", "车型年份", "使用性质"]
-          },
-          "operation": {
-            "type": "clarify_slots"    // 操作类型：
-                  // clarify_L1      — 一级大类不明确，需展示 5 大选项
-                  // clarify_slots   — 意图已定，缺槽位需收集
-                  // direct_reply    — 集团直接答复（文本）
-                  // route_to_subsidiary — 路由子公司（含 ###tool_call）
-                  // fallback        — 未覆盖兜底
-            "detail": "意图已确认为车险投保，收集全部槽位后调用报价接口"
-          },
-          "user_output": "好的，小保帮您准备车险报价..."  // 面向用户的输出文本
-                                                          // 可能内含 ###tool_call(xxx)
-          "reason": "用户明确说要买车险并请求报价"
-        }
-      }
-
-      注意：L1.data 结构与 L1_purpose.purpose_route() 原始返回值完全一致，
-      详见 src/L1_purpose.py 的入口文档。
-
-=== 协同 agent 快速指南 =======================================================
-
-  本文件是项目的唯一对外接口。其他模块 / agent 调用时只需：
-
-      # 1. 导入
-      from entrance import entrance
-
-      # 2. 调用
-      result = entrance(messages)
-
-      # 3. 按 case 分流
-      if result["case"] == 0:
-          # L0 拦截 → 升级人工
-          handle_escalation(result["data"]["call_body"],
-                            result["data"]["situation_brief"],
-                            result["data"]["user_comfort"])
-      else:
-          # L0 通过 → 走 L1 意图路由
-          dispatch(result["data"]["operation"]["type"],
-                   result["data"]["user_output"])
-
-=== 依赖链 ===================================================================
-
-  entrance.py
-   ├── src/L0_tag_judge.py  ── tag_judge_v2(messages) → dict[5 个 float]
-   │    └── prompt/tag_*.txt  (5 个判别性标签 prompt)
-   ├── src/L1_purpose.py    ── purpose_route(messages) → dict[L1 完整结果]
-   │    └── prompt/L1_intent_router.txt
-   └── prompt/escalation.txt ── 升级处置 LLM prompt（本模块内用）
-
-  LLM:
-    L0 判别性标签:  deepseek-v4-flash (×~20)
-    L1 意图路由:    deepseek-v4-pro   (×~2)
-    升级处置:       deepseek-v4-flash (×1)
-    （L0 与 L1 并行发射；升级处置仅 case=0 时串行调用）
-
-=== 配置 =====================================================================
-
-  API key / base_url 修改处：本文件顶部 client = OpenAI(...) 行。
-  拦截阈值默认值修改处：entrance() 函数签名的 l0_threshold 参数。
-
-=== 测试 =====================================================================
-
-      python src/entrance.py
-
-  运行 3 组内置测试用例（正常业务 / 转人工 / 紧急救援），直接输出入口原始返回。
+  统一格式: {"case": 0|1|2, "risk_level": ..., "response_mode": ..., "data": {...}}
+  与V1向后兼容 — case字段保留，data字段扩展。
 """
 
 import os
@@ -198,12 +47,17 @@ import json
 import re
 from concurrent.futures import ThreadPoolExecutor
 
-# 确保能导入同目录模块
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from openai import OpenAI
-from L0_tag_judge import tag_judge_v2, _format_messages
-from L1_purpose import purpose_route
+from L0_tag_judge import tag_judge_v2, _format_messages, build_l0_output
+from L1_purpose import purpose_route, build_l1_output
+from L2_risk_assess import assess_risk
+from L3_response_dispatch import dispatch_by_risk, get_region
+from pipeline_types import (
+    L0Output, L1Output, RiskOutput, DispatchResult, PipelineResult,
+    make_safe_l0, make_safe_risk, make_safe_dispatch,
+)
 
 client = OpenAI(
     api_key="sk-6172dca8aeb0461a8b84cc8bcac0f9e8",
@@ -226,6 +80,7 @@ _TAG_CN = {
     'urgent':  '紧急语境',
     'non_biz': '非业务闲聊',
 }
+
 
 # ============================================================
 # 基础 LLM 调用
@@ -300,65 +155,51 @@ def _make_fallback_escalation(raw_text=''):
 
 
 # ============================================================
-# L0 拦截判定
+# L0 拦截判定（V2：仅 manual 触发升级处置）
 # ============================================================
 
-def _check_l0_intercept(l0_result, threshold=0.5):
+def _check_l0_intercept(l0: L0Output):
     """
-    检查 L0 结果是否触发拦截。
+    检查是否触发人工升级处置。
 
-    拦截条件（任一标签概率 ≥ threshold 即触发）：
-      - manual  ≥ threshold  → 用户多次表达转人工意图
-      - angry   ≥ threshold  → 愤怒/不满情绪
-      - sad     ≥ threshold  → 悲伤情绪
-      - urgent  ≥ threshold  → 紧急语境
-      - non_biz ≥ threshold  → 非业务闲聊
-
-    Args:
-        l0_result: dict, tag_judge_v2 的返回值
-        threshold: float, 拦截阈值，默认 0.7
+    V2变更：只有 manual 触发立即拦截升级。
+    angry/urgent/sad/non_biz 不再走升级处置流程，
+    而是由 Stage 2 风险评估和 Stage 3 分派处理。
 
     Returns:
         tuple: (should_intercept: bool, triggered_tags: list[str])
     """
     triggered = []
-    for tag in ['manual', 'angry', 'sad', 'urgent', 'non_biz']:
-        if l0_result.get(tag, 0.0) >= threshold:
-            triggered.append(tag)
-    return len(triggered) > 0, triggered
+    for tag_type, tag in l0.tags.items():
+        if tag.triggered:
+            triggered.append(tag_type)
+    should_intercept = l0.should_escalate  # manual触发
+    return should_intercept, triggered
 
 
 # ============================================================
-# 升级处置智能体（L0 拦截后调用）
+# 升级处置智能体（L0 manual 拦截后调用）
 # ============================================================
 
-def _escalate_to_human(messages, l0_result, triggered_tags, debug=False):
+def _escalate_to_human(messages, l0, triggered_tags, debug=False):
     """
     升级处置智能体：接收被 L0 拦截的对话和标签结果，
     调用 LLM 生成人工介入请求体和情景快速披露。
 
-    智能体职责：
-      1. 生成 call_body — 调用接入人工接口的请求体
-      2. 生成 situation_brief — 向人工坐席提供情景快速披露
-
-    Args:
-        messages:       list[dict], 原始对话消息
-        l0_result:      dict, L0 完整检测结果
-        triggered_tags: list[str], 触发的标签列表
-        debug:          bool, 是否输出调试信息
-
-    Returns:
-        dict: {"call_body": {...}, "situation_brief": "..."}
+    V2适配：传入tag类型信息，prompt根据tag类型选择安抚策略。
     """
-    # 构建触发标签的描述文本
+    # 构建触发标签的描述文本（含tag类型信息）
     triggered_lines = []
-    for tag in triggered_tags:
-        prob = l0_result.get(tag, 0.0)
-        desc = _TAG_CN.get(tag, tag)
-        triggered_lines.append(f"  - {desc}：置信度 {prob:.2f}")
+    for tag_type in triggered_tags:
+        tag = l0.tags.get(tag_type)
+        if tag:
+            desc = _TAG_CN.get(tag_type, tag_type)
+            triggered_lines.append(
+                f"  - [{tag_type}] {desc}：置信度 {tag.probability:.2f}"
+            )
 
     triggered_summary = '\n'.join(triggered_lines)
-    l0_full = json.dumps(l0_result, ensure_ascii=False)
+    l0_full = json.dumps(l0.raw_probabilities, ensure_ascii=False)
 
     # 对话文本
     conversation = _format_messages(messages)
@@ -389,88 +230,224 @@ def _escalate_to_human(messages, l0_result, triggered_tags, debug=False):
 
 
 # ============================================================
+# 结果构建辅助
+# ============================================================
+
+def _build_tag_dispositions(l0: L0Output) -> dict:
+    """构建 tag_dispositions 序列化字典"""
+    return {
+        tag_type: {
+            "action": tag.action,
+            "probability": tag.probability,
+            "triggered": tag.triggered,
+        }
+        for tag_type, tag in l0.tags.items()
+    }
+
+
+def _build_decision_trail(risk: RiskOutput) -> list[dict]:
+    """构建 decision_trail 序列化列表"""
+    return [
+        {
+            "step": d.step,
+            "input_value": d.input_value,
+            "result": d.result,
+            "reason": d.reason,
+        }
+        for d in risk.decision_trail
+    ]
+
+
+# ============================================================
 # 主入口
 # ============================================================
 
-def entrance(messages, l0_threshold=0.7, debug=False):
+def entrance(messages, l0_threshold=0.7, debug=False, region=None):
     """
-    智能管家路由层统一入口。
+    智能管家路由层统一入口 (V2 Pipeline)。
 
     流程：
-      1. L0 跨场景标记检测 (tag_judge_v2)
-      2. 任一标签 ≥ threshold → 拦截，升级处置 → case=0
-      3. 全部标签 < threshold → 通过，意图路由 → case=1
+      Stage 0 ∥ Stage 1 → Stage 2 → Stage 3 → PipelineResult
 
     Args:
         messages:     list[dict], OpenAI 格式完整对话历史
         l0_threshold: float, L0 拦截阈值（默认 0.7）
         debug:        bool, 是否打印调试信息
+        region:       str | None, "pilot" 或 "non_pilot"。
+                      None时自动从上下文判定（当前默认non_pilot）
 
     Returns:
         dict: {
-            "case": 0 | 1,
-            "data": {
-                # case=0: {"call_body": {...}, "situation_brief": "..."}
-                # case=1: { L1 purpose_route 完整返回 }
-            }
+            "case": 0 | 1 | 2,
+            "risk_level": str | None,
+            "response_mode": str,
+            "tag_dispositions": dict,
+            "decision_trail": list[dict],
+            "data": {...}
         }
-
-    Example:
-        >>> result = entrance([{"role": "user", "content": "我要买车险"}])
-        >>> print(result["case"])  # 1
-        >>> print(result["data"]["primary_intent"]["l2"])  # "车险投保"
     """
     if debug:
-        print(f'[entrance] 收到 {len(messages)} 条消息')
+        print(f'[entrance] V2 Pipeline: {len(messages)} 条消息')
 
-    # ---- L0 + L1 并行发射 ----
+    effective_region = region or get_region()
+
+    # ---- Stage 0 ∥ Stage 1 并行发射 ----
     if debug:
-        print('[entrance] L0 + L1 并行发射 ...')
+        print('[entrance] Stage 0 (L0) ∥ Stage 1 (L1) 并行发射 ...')
+
+    l0: L0Output = make_safe_l0()
+    l1: L1Output = None
+    risk: RiskOutput = make_safe_risk()
+    dispatch: DispatchResult = None
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         future_l0 = executor.submit(tag_judge_v2, messages)
         future_l1 = executor.submit(purpose_route, messages, debug)
 
-        # 等 L0 先返回（flash 模型，通常比 L1 的 pro 快）
-        l0_result = future_l0.result()
+        # ---- 等待 Stage 0 (L0) 先返回 ----
+        try:
+            raw_l0 = future_l0.result(timeout=30)
+            l0 = build_l0_output(raw_l0, l0_threshold)
+        except Exception as e:
+            if debug:
+                print(f'[entrance] Stage 0 异常: {e}，使用安全默认值')
+            l0 = make_safe_l0()
 
         if debug:
-            print(f'[entrance] L0 结果: {json.dumps(l0_result, ensure_ascii=False)}')
+            triggered = [t for t, tag in l0.tags.items() if tag.triggered]
+            print(f'[entrance] L0 完成: 触发标签={triggered or "无"}')
+            for t, tag in l0.tags.items():
+                if tag.probability > 0.1:
+                    print(f'  {t}: {tag.probability:.2f} (action={tag.action})')
 
-        # ---- 检查 L0 拦截 ----
-        should_intercept, triggered_tags = _check_l0_intercept(l0_result, l0_threshold)
+        # ---- 检查 manual 拦截 (case=0) ----
+        should_intercept, triggered_tags = _check_l0_intercept(l0)
 
         if should_intercept:
             if debug:
-                print(f'[entrance] L0 拦截触发! 触发标签: {triggered_tags}')
-                print('[entrance] 路由至升级处置智能体 (L1 结果丢弃) ...')
+                print(f'[entrance] L0 manual拦截! → case=0')
 
-            # 升级处置（L1 还在跑但不管了）
-            escalation_data = _escalate_to_human(messages, l0_result, triggered_tags, debug=debug)
-            escalation_data["l0_tags"] = l0_result
+            # 升级处置
+            escalation_data = _escalate_to_human(
+                messages, l0, triggered_tags, debug=debug
+            )
+            escalation_data["l0_tags"] = {
+                t: tag.probability for t, tag in l0.tags.items()
+            }
 
             return {
                 "case": 0,
+                "risk_level": "high",
+                "response_mode": "faq_only_human",
+                "tag_dispositions": _build_tag_dispositions(l0),
+                "decision_trail": [],
                 "data": escalation_data,
             }
 
-        # ---- L0 通过，等 L1 ----
+        # ---- 检查 urgent 直通 (case=2) ----
+        if l0.should_skip_risk:
+            if debug:
+                print('[entrance] L0 urgent触发! → case=2，跳过风险评估')
+
+            # 等待 L1
+            try:
+                raw_l1 = future_l1.result(timeout=60)
+                l1 = build_l1_output(raw_l1)
+            except Exception as e:
+                if debug:
+                    print(f'[entrance] Stage 1 异常: {e}，使用兜底')
+                l1 = build_l1_output({})
+
+            # 紧急：跳过风险评估，直接操作指引
+            dispatch = dispatch_by_risk(l0, l1, make_safe_risk(),
+                                        effective_region, debug)
+
+            return {
+                "case": 2,
+                "risk_level": None,
+                "response_mode": dispatch.response_mode,
+                "tag_dispositions": _build_tag_dispositions(l0),
+                "decision_trail": [],
+                "data": {
+                    "user_output": dispatch.user_output,
+                    "escalate_to_human": dispatch.escalate_to_human,
+                    "primary_intent": l1.primary_intent,
+                    "tool_calls": dispatch.tool_calls,
+                    "reason": "紧急标记触发，跳过澄清和风险评估，直接推送操作指引",
+                },
+            }
+
+        # ---- 等待 Stage 1 (L1) ----
         if debug:
-            print('[entrance] L0 通过 (无标签触发)，等待 L1 ...')
+            print('[entrance] L0 通过，等待 L1 ...')
 
-        l1_result = future_l1.result()
+        try:
+            raw_l1 = future_l1.result(timeout=60)
+            l1 = build_l1_output(raw_l1)
+        except Exception as e:
+            if debug:
+                print(f'[entrance] Stage 1 异常: {e}，使用兜底')
+            l1 = build_l1_output({})
 
+    # ---- Stage 2: 风险评估 ----
+    if debug:
+        print('[entrance] Stage 2: 风险评估 ...')
+
+    try:
+        risk = assess_risk(l0, l1, messages, debug=debug)
+    except Exception as e:
         if debug:
-            pi = l1_result.get('primary_intent', {})
-            op = l1_result.get('operation', {})
-            print(f'[entrance] L1 完成: {pi.get("l1", "?")} > {pi.get("l2", "?")} '
-                  f'(confidence={pi.get("confidence", 0):.2f}), '
-                  f'operation={op.get("type", "?")}')
+            print(f'[entrance] Stage 2 异常: {e}，使用安全默认值')
+        risk = make_safe_risk()
 
-        return {
-            "case": 1,
-            "data": l1_result,
-        }
+    # ---- Stage 3: 回复分派 ----
+    if debug:
+        print(f'[entrance] Stage 3: 回复分派 (risk={risk.risk_level}, '
+              f'mode={risk.response_mode}, region={effective_region}) ...')
+
+    try:
+        dispatch = dispatch_by_risk(l0, l1, risk, effective_region, debug)
+    except Exception as e:
+        if debug:
+            print(f'[entrance] Stage 3 异常: {e}，使用安全默认值')
+        dispatch = make_safe_dispatch(l1)
+
+    # ---- 构建返回 ----
+    if debug:
+        pi = l1.primary_intent or {}
+        print(f'[entrance] 完成: case=1, '
+              f'scene={pi.get("l2", "?")}, '
+              f'risk={risk.risk_level}, '
+              f'mode={dispatch.response_mode}, '
+              f'audit={dispatch.audit_required}')
+
+    return {
+        "case": 1,
+        "risk_level": risk.risk_level,
+        "response_mode": dispatch.response_mode,
+        "tag_dispositions": _build_tag_dispositions(l0),
+        "decision_trail": _build_decision_trail(risk),
+        "data": {
+            "primary_intent": l1.primary_intent,
+            "top_candidates": l1.top_candidates,
+            "needs_clarification": l1.needs_clarification,
+            "slots": {
+                "all_slots": [
+                    {"name": s.name, "description": s.description, "options": s.options}
+                    for s in (l1.slots.all_slots if l1.slots else [])
+                ],
+                "filled_slots": l1.slots.filled_slots if l1.slots else {},
+                "missing_slots": l1.slots.missing_slots if l1.slots else [],
+            },
+            "operation": l1.operation,
+            "user_output": dispatch.user_output,
+            "reason": l1.reason,
+            "faq_matched": dispatch.faq_matched,
+            "audit_required": dispatch.audit_required,
+            "recommendation": dispatch.recommendation,
+            "tool_calls": dispatch.tool_calls,
+        },
+    }
 
 
 # ============================================================
@@ -479,14 +456,14 @@ def entrance(messages, l0_threshold=0.7, debug=False):
 
 if __name__ == '__main__':
     print("=" * 70)
-    print("entrance 函数测试")
+    print("entrance V2 Pipeline 测试")
     print("=" * 70)
 
     # ----------------------------------------------------------
     # 测试1: 正常业务对话 → 预期 case=1
     # ----------------------------------------------------------
     print("\n" + "=" * 70)
-    print("测试1: 正常业务对话（预期 case=1，走 L1 意图路由）")
+    print("测试1: 正常业务对话（预期 case=1）")
     print("=" * 70)
 
     test_msgs_1 = [
@@ -503,7 +480,7 @@ if __name__ == '__main__':
     # 测试2: 转人工场景 → 预期 case=0
     # ----------------------------------------------------------
     print("\n" + "=" * 70)
-    print("测试2: 转人工场景（预期 case=0，L0 拦截 → 升级处置）")
+    print("测试2: 转人工场景（预期 case=0）")
     print("=" * 70)
 
     test_msgs_2 = [
@@ -517,11 +494,10 @@ if __name__ == '__main__':
     print(json.dumps(result2, ensure_ascii=False, indent=2))
 
     # ----------------------------------------------------------
-    # 测试3: 紧急道路救援 → 预期 case=1（走 L1），但如果 angry/urgent
-    #         被触发则可能 case=0，属于正常的分流行为
+    # 测试3: 紧急救援 → 可能 case=2 (urgent触发) 或 case=1
     # ----------------------------------------------------------
     print("\n" + "=" * 70)
-    print("测试3: 紧急救援请求（预期由 L0 判定是否拦截）")
+    print("测试3: 紧急救援请求")
     print("=" * 70)
 
     test_msgs_3 = [
@@ -531,6 +507,42 @@ if __name__ == '__main__':
     result3 = entrance(test_msgs_3, debug=True)
     print("\n>>> entrance 返回 (测试3):")
     print(json.dumps(result3, ensure_ascii=False, indent=2))
+
+    # ----------------------------------------------------------
+    # 测试4: V2 核保场景
+    # ----------------------------------------------------------
+    print("\n" + "=" * 70)
+    print("测试4: V2 核保场景（预期 scene=核保, risk=high）")
+    print("=" * 70)
+
+    test_msgs_4 = [
+        {"role": "user", "content": "我有糖尿病，能买重疾险吗"},
+    ]
+
+    result4 = entrance(test_msgs_4, debug=True)
+    print("\n>>> entrance 返回 (测试4):")
+    pi = result4.get("data", {}).get("primary_intent", {})
+    print(f"  case={result4['case']}, risk={result4['risk_level']}, "
+          f"scene={pi.get('l2')}, mode={result4['response_mode']}")
+    print(f"  user_output: {result4['data'].get('user_output', '')[:150]}")
+
+    # ----------------------------------------------------------
+    # 测试5: 本人推论（不应问"给谁买"）
+    # ----------------------------------------------------------
+    print("\n" + "=" * 70)
+    print("测试5: 本人推论（预期 filled_slots.被保人关系=本人）")
+    print("=" * 70)
+
+    test_msgs_5 = [
+        {"role": "user", "content": "我35岁，身体有点高血压，想买个医疗险"},
+    ]
+
+    result5 = entrance(test_msgs_5, debug=False)
+    print("\n>>> entrance 返回 (测试5):")
+    slots = result5.get("data", {}).get("slots", {})
+    print(f"  filled_slots: {slots.get('filled_slots', {})}")
+    print(f"  missing_slots: {slots.get('missing_slots', [])}")
+    print(f"  user_output: {result5['data'].get('user_output', '')[:200]}")
 
     print("\n" + "=" * 70)
     print("测试完成")
