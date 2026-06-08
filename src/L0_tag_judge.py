@@ -239,25 +239,86 @@ def _parse_probability_response(response):
     return 0.0
 
 
+def _sanitize_json_control_chars(text: str) -> str:
+    """将 JSON 字符串值内的字面控制字符替换为转义序列（防御性修复）。"""
+    result = []
+    in_string = False
+    escape_next = False
+    for c in text:
+        if escape_next:
+            result.append(c)
+            escape_next = False
+            continue
+        if c == '\\':
+            result.append(c)
+            escape_next = True
+            continue
+        if c == '"':
+            in_string = not in_string
+            result.append(c)
+            continue
+        if in_string:
+            if c == '\n':
+                result.append('\\n')
+            elif c == '\r':
+                result.append('\\r')
+            elif c == '\t':
+                result.append('\\t')
+            elif ord(c) < 32:
+                result.append(f'\\u{ord(c):04x}')
+            else:
+                result.append(c)
+        else:
+            result.append(c)
+    return ''.join(result)
+
+
+def _extract_json_from_text(text):
+    """从 LLM 输出中鲁棒提取 JSON 对象。
+    三策略级联：fence 块提取 → 花括号边界 → 整段解析。"""
+    t = text.strip()
+
+    # 策略1：提取 ```json ... ``` 或 ``` ... ```（任意位置，不要求开头）
+    m = re.search(r'```(?:json)?\s*\n?(.*?)\n?\s*```', t, re.DOTALL)
+    if m:
+        try:
+            return json.loads(_sanitize_json_control_chars(m.group(1).strip()))
+        except json.JSONDecodeError:
+            pass
+
+    # 策略2：提取第一个 { 到最后一个 }
+    first = t.find('{')
+    last = t.rfind('}')
+    if first != -1 and last != -1 and last > first:
+        try:
+            return json.loads(_sanitize_json_control_chars(t[first:last + 1]))
+        except json.JSONDecodeError:
+            pass
+
+    # 策略3：整段解析
+    try:
+        return json.loads(_sanitize_json_control_chars(t))
+    except json.JSONDecodeError:
+        return None
+
+
 def _parse_json_response(response):
     """
     解析 LLM 对人工标记的 JSON 回复。
     期望格式: {"hit": 1或0, "reason": "..."}
     容错处理。
     """
-    text = response.strip()
-    if text.startswith('```'):
-        text = re.sub(r'^```(?:json)?\s*', '', text)
-        text = re.sub(r'\s*```$', '', text)
-    try:
-        data = json.loads(text)
+    data = _extract_json_from_text(response)
+    if data is not None:
         return data
-    except json.JSONDecodeError:
-        if '"hit": 1' in text or '"hit":1' in text:
-            return {'hit': 1, 'reason': 'fallback parse'}
-        elif '"hit": 0' in text or '"hit":0' in text:
-            return {'hit': 0, 'reason': 'fallback parse'}
-        return {'hit': 0, 'reason': 'parse error'}
+
+    # JSON 提取失败，降级为文本关键词匹配
+    text = response.strip()
+    if '"hit": 1' in text or '"hit":1' in text:
+        return {'hit': 1, 'reason': 'fallback parse'}
+    elif '"hit": 0' in text or '"hit":0' in text:
+        return {'hit': 0, 'reason': 'fallback parse'}
+    return {'hit': 0, 'reason': 'parse error'}
 
 
 # ============================================================

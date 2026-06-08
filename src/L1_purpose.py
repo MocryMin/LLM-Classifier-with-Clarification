@@ -154,26 +154,88 @@ def _is_fallback(result):
     return _FALLBACK_SIGNATURE in result.get('reason', '')
 
 
+def _sanitize_json_control_chars(text: str) -> str:
+    """将 JSON 字符串值内的字面控制字符替换为转义序列。
+
+    LLM 有时在 user_output 字段中输出真实换行符 U+000A（应为 \\n），
+    这会导致 json.loads() 抛出 JSONDecodeError: Invalid control character。
+    本函数模拟 JSON 解析器状态机，仅转换字符串内的控制字符。
+    """
+    result = []
+    in_string = False
+    escape_next = False
+    for c in text:
+        if escape_next:
+            result.append(c)
+            escape_next = False
+            continue
+        if c == '\\':
+            result.append(c)
+            escape_next = True
+            continue
+        if c == '"':
+            in_string = not in_string
+            result.append(c)
+            continue
+        if in_string:
+            if c == '\n':
+                result.append('\\n')
+            elif c == '\r':
+                result.append('\\r')
+            elif c == '\t':
+                result.append('\\t')
+            elif ord(c) < 32:
+                result.append(f'\\u{ord(c):04x}')
+            else:
+                result.append(c)
+        else:
+            result.append(c)
+    return ''.join(result)
+
+
+def _extract_json_from_text(text):
+    """从 LLM 输出中鲁棒提取 JSON 对象。
+    三策略级联：fence 块提取 → 花括号边界 → 整段解析。
+    每次 json.loads 前先做控制字符转义。"""
+    t = text.strip()
+
+    # 策略1：提取 ```json ... ``` 或 ``` ... ```（任意位置，不要求开头）
+    m = re.search(r'```(?:json)?\s*\n?(.*?)\n?\s*```', t, re.DOTALL)
+    if m:
+        try:
+            return json.loads(_sanitize_json_control_chars(m.group(1).strip()))
+        except json.JSONDecodeError:
+            pass
+
+    # 策略2：提取第一个 { 到最后一个 }
+    first = t.find('{')
+    last = t.rfind('}')
+    if first != -1 and last != -1 and last > first:
+        try:
+            return json.loads(_sanitize_json_control_chars(t[first:last + 1]))
+        except json.JSONDecodeError:
+            pass
+
+    # 策略3：整段解析
+    try:
+        return json.loads(_sanitize_json_control_chars(t))
+    except json.JSONDecodeError:
+        return None
+
+
 def _try_parse_json(text):
     """尝试解析 LLM 输出为 JSON。返回 (result, success)。"""
-    text = text.strip()
-
-    # 去掉 markdown code block
-    if text.startswith('```'):
-        text = re.sub(r'^```(?:json)?\s*', '', text)
-        text = re.sub(r'\s*```$', '', text)
-
-    try:
-        result = json.loads(text)
-        result.setdefault('primary_intent', {'l1': '', 'l2': '', 'confidence': 0.0})
-        result.setdefault('top_candidates', [])
-        result.setdefault('needs_clarification', False)
-        result.setdefault('operation', {'type': 'direct_reply', 'detail': ''})
-        result.setdefault('user_output', '')
-        result.setdefault('reason', '')
-        return result, True
-    except json.JSONDecodeError:
+    result = _extract_json_from_text(text)
+    if result is None:
         return _make_fallback_result(), False
+
+    result.setdefault('primary_intent', {'l1': '', 'l2': '', 'confidence': 0.0})
+    result.setdefault('top_candidates', [])
+    result.setdefault('needs_clarification', False)
+    result.setdefault('operation', {'type': 'direct_reply', 'detail': ''})
+    result.setdefault('user_output', '')
+    result.setdefault('reason', '')
+    return result, True
 
 
 # ============================================================

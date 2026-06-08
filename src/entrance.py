@@ -279,25 +279,83 @@ def _load_escalation_prompt():
 # JSON 解析
 # ============================================================
 
+def _sanitize_json_control_chars(text: str) -> str:
+    """将 JSON 字符串值内的字面控制字符替换为转义序列（防御性修复）。"""
+    result = []
+    in_string = False
+    escape_next = False
+    for c in text:
+        if escape_next:
+            result.append(c)
+            escape_next = False
+            continue
+        if c == '\\':
+            result.append(c)
+            escape_next = True
+            continue
+        if c == '"':
+            in_string = not in_string
+            result.append(c)
+            continue
+        if in_string:
+            if c == '\n':
+                result.append('\\n')
+            elif c == '\r':
+                result.append('\\r')
+            elif c == '\t':
+                result.append('\\t')
+            elif ord(c) < 32:
+                result.append(f'\\u{ord(c):04x}')
+            else:
+                result.append(c)
+        else:
+            result.append(c)
+    return ''.join(result)
+
+
+def _extract_json_from_text(text):
+    """从 LLM 输出中鲁棒提取 JSON 对象。
+    三策略级联：fence 块提取 → 花括号边界 → 整段解析。"""
+    t = text.strip()
+
+    # 策略1：提取 ```json ... ``` 或 ``` ... ```（任意位置，不要求开头）
+    m = re.search(r'```(?:json)?\s*\n?(.*?)\n?\s*```', t, re.DOTALL)
+    if m:
+        try:
+            return json.loads(_sanitize_json_control_chars(m.group(1).strip()))
+        except json.JSONDecodeError:
+            pass
+
+    # 策略2：提取第一个 { 到最后一个 }
+    first = t.find('{')
+    last = t.rfind('}')
+    if first != -1 and last != -1 and last > first:
+        try:
+            return json.loads(_sanitize_json_control_chars(t[first:last + 1]))
+        except json.JSONDecodeError:
+            pass
+
+    # 策略3：整段解析
+    try:
+        return json.loads(_sanitize_json_control_chars(t))
+    except json.JSONDecodeError:
+        return None
+
+
 def _parse_escalation_json(text):
     """
     解析升级处置智能体的 JSON 输出。
-    容错处理：去掉 markdown 标记，解析失败时构造兜底结果。
+    容错处理：多层 JSON 提取，解析失败时构造兜底结果。
     """
-    text = text.strip()
-    if text.startswith('```'):
-        text = re.sub(r'^```(?:json)?\s*', '', text)
-        text = re.sub(r'\s*```$', '', text)
-
-    try:
-        data = json.loads(text)
+    data = _extract_json_from_text(text)
+    if data is not None:
         return {
             'call_body': data.get('call_body', '###tool_call(human_intervention_api)'),
             'situation_brief': data.get('situation_brief', '（解析失败）'),
             'user_comfort': data.get('user_comfort', '小保已收到您的消息，正在为您优先处理。'),
         }, True
-    except json.JSONDecodeError:
-        return _make_fallback_escalation(text), False
+
+    return _make_fallback_escalation(text), False
 
 
 def _make_fallback_escalation(raw_text=''):
