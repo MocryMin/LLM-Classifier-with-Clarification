@@ -12,6 +12,7 @@ Usage:
 
 Reports are written to:
   test/throughout/5batch_samples/report/
+  (including json_parse_report_*.xlsx for each batch)
 """
 from __future__ import annotations
 
@@ -33,6 +34,19 @@ REPORT_DIR = ROOT / "test" / "throughout" / "5batch_samples" / "report"
 
 sys.path.insert(0, str(SRC))
 from entrance import entrance  # noqa: E402
+from L1_purpose import get_and_clear_parse_events  # noqa: E402
+
+
+def _l1_parse_status() -> str:
+    """Return aggregated L1 JSON parse status for the most recent entrance() call.
+    Called AFTER entrance() returns; reads and clears the parse event log.
+    Returns: 'ok' | 'retry_recovered' | 'full_failure' | 'no_parse'"""
+    events = get_and_clear_parse_events()
+    if not events:
+        return 'ok'  # no events recorded = all parses succeeded first try
+    # The last event tells us the final outcome
+    last = events[-1]
+    return last.get('status', 'unknown')
 
 
 def parse_json_cell(value: str) -> Any:
@@ -96,62 +110,39 @@ def report_path(name: str) -> Path:
     return REPORT_DIR / f"{name}_{ts}.xlsx"
 
 
-def _detect_parse_issue(result: dict[str, Any]) -> str | None:
-    """从 entrance 返回结果反推 JSON 解析是否失败（不依赖 stdout）。"""
-    pi = result.get("data", {}).get("primary_intent", {}) or {}
-    reason = result.get("data", {}).get("reason", "") or ""
-
-    # primary_intent 为空 = fallback 兜底 = 很可能是全失败
-    if not pi.get("l1"):
-        return "FULL_FAILURE"
-
-    # reason 含 JSON parse error 标记
-    if "JSON parse error" in reason:
-        return "PARSE_FALLBACK"
-
-    # output 含兜底话术
-    uo = result.get("data", {}).get("user_output", "") or ""
-    if "没有完全理解您的需求" in uo:
-        return "PARSE_FALLBACK"
-
-    return None
-
-
 def _run_concurrent(
     samples: list[dict[str, Any]],
     debug: bool,
     l0_threshold: float,
     max_workers: int,
     batch_name: str,
-    verbose: bool = False,
-) -> list[tuple[int, dict[str, Any], dict[str, Any]]]:
-    """Run all samples concurrently, return (index, sample, result) tuples."""
+) -> tuple[list[tuple[int, dict, dict]], list[dict]]:
+    """Run all samples concurrently.
+    Returns: (ordered_results, parse_log).
+    ordered_results: list of (index, sample, result) sorted by original index.
+    parse_log: list of {batch, idx, messages, status, attempts} for each sample."""
     total = len(samples)
     lock = threading.Lock()
     done_count = [0]
-    issues: list[str] = []
+    parse_log: list[dict] = []
 
-    def _run_with_progress(idx: int, s: dict[str, Any]) -> dict[str, Any]:
+    def _run_with_progress(s: dict[str, Any], idx: int) -> dict[str, Any]:
         r = run_one(s["messages"], debug=debug, l0_threshold=l0_threshold)
-        issue = _detect_parse_issue(r)
+        status = _l1_parse_status()
         with lock:
             done_count[0] += 1
-            if verbose:
-                label = s.get("correct_label", "-")
-                pi = r.get("data", {}).get("primary_intent", {}) or {}
-                l1 = pi.get("l1", "") or "?"
-                l2 = pi.get("l2", "") or "?"
-                flag = f" [{issue}]" if issue else ""
-                print(f"  [{batch_name}] {done_count[0]}/{total}  "
-                      f"intent={l1}|{l2}  expected={label}{flag}")
-            elif issue:
-                issues.append(f"  [{batch_name}] sample {idx + 1}: {issue}")
+            parse_log.append({
+                "batch": s["batch"],
+                "idx": idx,
+                "messages": s["messages"],
+                "status": status,
+            })
         return r
 
     results: dict[int, dict[str, Any]] = {}
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
-            executor.submit(_run_with_progress, idx, s): idx
+            executor.submit(_run_with_progress, s, idx): idx
             for idx, s in enumerate(samples)
         }
         for future in as_completed(futures):
@@ -161,23 +152,49 @@ def _run_concurrent(
             except Exception as e:
                 print(f"  [{batch_name}] sample {idx + 1} FAILED: {e}", file=sys.stderr)
                 results[idx] = {"error": str(e)}
+                with lock:
+                    parse_log.append({
+                        "batch": samples[idx]["batch"],
+                        "idx": idx,
+                        "messages": samples[idx]["messages"],
+                        "status": "error",
+                    })
 
-    # Summary: print parse issues (if not verbose) and completion
-    if not verbose and issues:
-        for msg in issues:
-            print(msg)
-    print(f"  {batch_name} {done_count[0]}/{total} completed"
-          + (f" ({len(issues)} parse issues)" if issues else ""))
+        print(f"  {batch_name} {done_count[0]}/{total} completed")
 
-    # Return ordered by index
-    return [(idx, samples[idx], results[idx]) for idx in sorted(results.keys())]
+    ordered = [(idx, samples[idx], results[idx]) for idx in sorted(results.keys())]
+    return ordered, parse_log
+
+
+def write_parse_report(
+    name: str, parse_log: list[dict],
+) -> Path:
+    """Write a per-batch JSON parse status report."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"{name}_parse"
+    ws.append(["batch", "sample_idx", "messages", "parse_status"])
+    for entry in sorted(parse_log, key=lambda e: (e["batch"], e["idx"])):
+        ws.append([
+            entry["batch"],
+            entry["idx"] + 1,  # 1-based for readability
+            json.dumps(entry["messages"], ensure_ascii=False),
+            entry["status"],
+        ])
+    ws.column_dimensions["A"].width = 8
+    ws.column_dimensions["B"].width = 12
+    ws.column_dimensions["C"].width = 90
+    ws.column_dimensions["D"].width = 18
+    path = report_path(f"{name}_parse_report")
+    wb.save(path)
+    return path
 
 
 def write_batch1_report(
-    samples: list[dict[str, Any]], debug: bool, l0_threshold: float, max_workers: int = 8, verbose: bool = False,
-) -> Path:
+    samples: list[dict[str, Any]], debug: bool, l0_threshold: float, max_workers: int = 8,
+) -> list[Path]:
     print(f"  batch1 0/{len(samples)} (launching {max_workers} workers)")
-    ordered = _run_concurrent(samples, debug, l0_threshold, max_workers, "batch1", verbose=verbose)
+    ordered, parse_log = _run_concurrent(samples, debug, l0_threshold, max_workers, "batch1")
 
     wb = Workbook()
     ws = wb.active
@@ -189,14 +206,15 @@ def write_batch1_report(
     ws.column_dimensions["B"].width = 120
     path = report_path("batch1_report")
     wb.save(path)
-    return path
+    ppath = write_parse_report("batch1", parse_log)
+    return [path, ppath]
 
 
 def write_risk_report(
-    name: str, samples: list[dict[str, Any]], debug: bool, l0_threshold: float, max_workers: int = 8, verbose: bool = False,
-) -> Path:
+    name: str, samples: list[dict[str, Any]], debug: bool, l0_threshold: float, max_workers: int = 8,
+) -> list[Path]:
     print(f"  {name} 0/{len(samples)} (launching {max_workers} workers)")
-    ordered = _run_concurrent(samples, debug, l0_threshold, max_workers, name, verbose=verbose)
+    ordered, parse_log = _run_concurrent(samples, debug, l0_threshold, max_workers, name)
 
     rows = []
     correct = 0
@@ -222,14 +240,15 @@ def write_risk_report(
     ws.column_dimensions["C"].width = 20
     path = report_path(f"{name}_report")
     wb.save(path)
-    return path
+    ppath = write_parse_report(name, parse_log)
+    return [path, ppath]
 
 
 def write_routing_report(
-    name: str, samples: list[dict[str, Any]], debug: bool, l0_threshold: float, max_workers: int = 8, verbose: bool = False,
+    name: str, samples: list[dict[str, Any]], debug: bool, l0_threshold: float, max_workers: int = 8,
 ) -> Path:
     print(f"  {name} 0/{len(samples)} (launching {max_workers} workers)")
-    ordered = _run_concurrent(samples, debug, l0_threshold, max_workers, name, verbose=verbose)
+    ordered = _run_concurrent(samples, debug, l0_threshold, max_workers, name)
 
     rows = []
     exact = 0
@@ -267,23 +286,23 @@ def write_routing_report(
     ws.column_dimensions["C"].width = 40
     path = report_path(f"{name}_report")
     wb.save(path)
-    return path
+    ppath = write_parse_report(name, parse_log)
+    return [path, ppath]
 
 
-def run_batch(batch: str, debug: bool, l0_threshold: float, max_workers: int, verbose: bool = False) -> list[Path]:
+def run_batch(batch: str, debug: bool, l0_threshold: float, max_workers: int) -> list[Path]:
     samples = load_samples()
     selected = batch_filter(samples, batch)
-    kw = dict(debug=debug, l0_threshold=l0_threshold, max_workers=max_workers, verbose=verbose)
     if batch == "batch1":
-        return [write_batch1_report(selected, **kw)]
+        return write_batch1_report(selected, debug=debug, l0_threshold=l0_threshold, max_workers=max_workers)
     if batch == "batch2":
-        return [write_risk_report("batch2", selected, **kw)]
+        return write_risk_report("batch2", selected, debug=debug, l0_threshold=l0_threshold, max_workers=max_workers)
     if batch == "batch3":
-        return [write_routing_report("batch3", selected, **kw)]
+        return write_routing_report("batch3", selected, debug=debug, l0_threshold=l0_threshold, max_workers=max_workers)
     if batch == "batch4":
-        return [write_routing_report("batch4", selected, **kw)]
+        return write_routing_report("batch4", selected, debug=debug, l0_threshold=l0_threshold, max_workers=max_workers)
     if batch == "batch5":
-        return [write_risk_report("batch5", selected, **kw)]
+        return write_risk_report("batch5", selected, debug=debug, l0_threshold=l0_threshold, max_workers=max_workers)
     raise ValueError(batch)
 
 
@@ -294,15 +313,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--l0-threshold", type=float, default=0.7)
     parser.add_argument("--workers", type=int, default=8,
                         help="并发 worker 数 (default 8). DeepSeek flash 并发限制 2500, pro 500.")
-    parser.add_argument("--verbose", action="store_true",
-                        help="逐样本打印意图和 parse 状态（并发时也能定位问题样本）")
     args = parser.parse_args(argv)
 
     batches = ["batch1", "batch2", "batch3", "batch4", "batch5"] if args.batch == "all" else [args.batch]
     paths: list[Path] = []
     for b in batches:
         print(f"Running {b}...")
-        paths.extend(run_batch(b, debug=args.debug, l0_threshold=args.l0_threshold, max_workers=args.workers, verbose=args.verbose))
+        paths.extend(run_batch(b, debug=args.debug, l0_threshold=args.l0_threshold, max_workers=args.workers))
     for p in paths:
         print(f"Wrote {p}")
     return 0

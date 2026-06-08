@@ -62,7 +62,25 @@ V2.1 架构变更：L1 只负责意图路由，不收集槽位。
 import os
 import json
 import re
+import threading
 from openai import OpenAI
+
+# ── 外部可读的 parse 事件日志（供测试 runner 使用）──
+# 使用 thread-local 保证多线程并发安全
+_parse_state = threading.local()
+
+def _parse_event_push(event: dict):
+    if not hasattr(_parse_state, 'events'):
+        _parse_state.events = []
+    _parse_state.events.append(event)
+
+def get_and_clear_parse_events() -> list[dict]:
+    """返回并清空当前线程自上次调用以来记录的 parse 事件列表。"""
+    events = getattr(_parse_state, 'events', None)
+    if events is None:
+        return []
+    _parse_state.events = []
+    return events
 
 client = OpenAI(
     api_key="sk-6172dca8aeb0461a8b84cc8bcac0f9e8",
@@ -274,12 +292,26 @@ def purpose_route(messages, debug=False, max_json_retries=2):
         result, ok = _try_parse_json(raw)
 
         if ok:
+            if attempt > 0:
+                _parse_event_push({
+                    'attempts': attempt + 1,
+                    'status': 'retry_recovered',
+                    'fallback': False,
+                    'detail': f'first {attempt} failed, attempt {attempt+1} ok',
+                })
             return result
 
         if attempt < max_json_retries:
             print(f'[L1] JSON parse failed, retrying... ({attempt+1}/{max_json_retries})')
 
-    # 全部重试耗尽，返回最后一次的兜底结果
+    # 全部重试耗尽
+    _parse_event_push({
+        'attempts': 1 + max_json_retries,
+        'status': 'full_failure',
+        'fallback': True,
+        'detail': 'all retries exhausted',
+    })
+    # 返回最后一次的兜底结果
     print('[L1] JSON parse failed after all retries, using fallback.')
     return result
 
