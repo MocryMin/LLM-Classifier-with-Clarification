@@ -246,9 +246,9 @@ def write_risk_report(
 
 def write_routing_report(
     name: str, samples: list[dict[str, Any]], debug: bool, l0_threshold: float, max_workers: int = 8,
-) -> Path:
+) -> list[Path]:
     print(f"  {name} 0/{len(samples)} (launching {max_workers} workers)")
-    ordered = _run_concurrent(samples, debug, l0_threshold, max_workers, name)
+    ordered, parse_log = _run_concurrent(samples, debug, l0_threshold, max_workers, name)
 
     rows = []
     exact = 0
