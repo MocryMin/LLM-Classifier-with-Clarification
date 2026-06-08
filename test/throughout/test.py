@@ -8,6 +8,7 @@ Usage:
   python test/throughout/test.py batch4
   python test/throughout/test.py batch5
   python test/throughout/test.py all
+  python test/throughout/test.py all --workers 16
 
 Reports are written to:
   test/throughout/5batch_samples/report/
@@ -17,6 +18,8 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -93,14 +96,56 @@ def report_path(name: str) -> Path:
     return REPORT_DIR / f"{name}_{ts}.xlsx"
 
 
-def write_batch1_report(samples: list[dict[str, Any]], debug: bool, l0_threshold: float) -> Path:
+def _run_concurrent(
+    samples: list[dict[str, Any]],
+    debug: bool,
+    l0_threshold: float,
+    max_workers: int,
+    batch_name: str,
+) -> list[tuple[int, dict[str, Any], dict[str, Any]]]:
+    """Run all samples concurrently, return (index, sample, result) tuples."""
+    total = len(samples)
+    lock = threading.Lock()
+    done_count = [0]
+
+    def _run_with_progress(s: dict[str, Any]) -> dict[str, Any]:
+        r = run_one(s["messages"], debug=debug, l0_threshold=l0_threshold)
+        with lock:
+            done_count[0] += 1
+        return r
+
+    results: dict[int, dict[str, Any]] = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(_run_with_progress, s): idx
+            for idx, s in enumerate(samples)
+        }
+        for future in as_completed(futures):
+            idx = futures[future]
+            try:
+                results[idx] = future.result()
+            except Exception as e:
+                print(f"  [{batch_name}] sample {idx + 1} FAILED: {e}", file=sys.stderr)
+                results[idx] = {"error": str(e)}
+
+        # Print periodic progress
+        print(f"  {batch_name} {done_count[0]}/{total} completed")
+
+    # Return ordered by index
+    return [(idx, samples[idx], results[idx]) for idx in sorted(results.keys())]
+
+
+def write_batch1_report(
+    samples: list[dict[str, Any]], debug: bool, l0_threshold: float, max_workers: int = 8,
+) -> Path:
+    print(f"  batch1 0/{len(samples)} (launching {max_workers} workers)")
+    ordered = _run_concurrent(samples, debug, l0_threshold, max_workers, "batch1")
+
     wb = Workbook()
     ws = wb.active
     ws.title = "batch1"
     ws.append(["测试messages", "该样本运行时输出的全部控制信息json"])
-    for i, s in enumerate(samples, start=1):
-        print(f"  batch1 {i}/{len(samples)}")
-        result = run_one(s["messages"], debug=debug, l0_threshold=l0_threshold)
+    for _, s, result in ordered:
         ws.append([messages_text(s["messages"]), result_text(result)])
     ws.column_dimensions["A"].width = 90
     ws.column_dimensions["B"].width = 120
@@ -109,12 +154,15 @@ def write_batch1_report(samples: list[dict[str, Any]], debug: bool, l0_threshold
     return path
 
 
-def write_risk_report(name: str, samples: list[dict[str, Any]], debug: bool, l0_threshold: float) -> Path:
+def write_risk_report(
+    name: str, samples: list[dict[str, Any]], debug: bool, l0_threshold: float, max_workers: int = 8,
+) -> Path:
+    print(f"  {name} 0/{len(samples)} (launching {max_workers} workers)")
+    ordered = _run_concurrent(samples, debug, l0_threshold, max_workers, name)
+
     rows = []
     correct = 0
-    for i, s in enumerate(samples, start=1):
-        print(f"  {name} {i}/{len(samples)}")
-        result = run_one(s["messages"], debug=debug, l0_threshold=l0_threshold)
+    for _, s, result in ordered:
         expected = s["correct_label"].get("risk_level")
         actual = output_risk(result)
         if actual == expected:
@@ -139,14 +187,17 @@ def write_risk_report(name: str, samples: list[dict[str, Any]], debug: bool, l0_
     return path
 
 
-def write_routing_report(name: str, samples: list[dict[str, Any]], debug: bool, l0_threshold: float) -> Path:
+def write_routing_report(
+    name: str, samples: list[dict[str, Any]], debug: bool, l0_threshold: float, max_workers: int = 8,
+) -> Path:
+    print(f"  {name} 0/{len(samples)} (launching {max_workers} workers)")
+    ordered = _run_concurrent(samples, debug, l0_threshold, max_workers, name)
+
     rows = []
     exact = 0
     l1_correct = 0
     l2_correct = 0
-    for i, s in enumerate(samples, start=1):
-        print(f"  {name} {i}/{len(samples)}")
-        result = run_one(s["messages"], debug=debug, l0_threshold=l0_threshold)
+    for _, s, result in ordered:
         expected = s["correct_label"]
         actual = output_intent(result)
         if actual.get("l1") == expected.get("l1"):
@@ -181,19 +232,19 @@ def write_routing_report(name: str, samples: list[dict[str, Any]], debug: bool, 
     return path
 
 
-def run_batch(batch: str, debug: bool, l0_threshold: float) -> list[Path]:
+def run_batch(batch: str, debug: bool, l0_threshold: float, max_workers: int) -> list[Path]:
     samples = load_samples()
     selected = batch_filter(samples, batch)
     if batch == "batch1":
-        return [write_batch1_report(selected, debug=debug, l0_threshold=l0_threshold)]
+        return [write_batch1_report(selected, debug=debug, l0_threshold=l0_threshold, max_workers=max_workers)]
     if batch == "batch2":
-        return [write_risk_report("batch2", selected, debug=debug, l0_threshold=l0_threshold)]
+        return [write_risk_report("batch2", selected, debug=debug, l0_threshold=l0_threshold, max_workers=max_workers)]
     if batch == "batch3":
-        return [write_routing_report("batch3", selected, debug=debug, l0_threshold=l0_threshold)]
+        return [write_routing_report("batch3", selected, debug=debug, l0_threshold=l0_threshold, max_workers=max_workers)]
     if batch == "batch4":
-        return [write_routing_report("batch4", selected, debug=debug, l0_threshold=l0_threshold)]
+        return [write_routing_report("batch4", selected, debug=debug, l0_threshold=l0_threshold, max_workers=max_workers)]
     if batch == "batch5":
-        return [write_risk_report("batch5", selected, debug=debug, l0_threshold=l0_threshold)]
+        return [write_risk_report("batch5", selected, debug=debug, l0_threshold=l0_threshold, max_workers=max_workers)]
     raise ValueError(batch)
 
 
@@ -202,13 +253,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("batch", choices=["batch1", "batch2", "batch3", "batch4", "batch5", "all"])
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--l0-threshold", type=float, default=0.7)
+    parser.add_argument("--workers", type=int, default=8,
+                        help="并发 worker 数 (default 8). DeepSeek flash 并发限制 2500, pro 500.")
     args = parser.parse_args(argv)
 
     batches = ["batch1", "batch2", "batch3", "batch4", "batch5"] if args.batch == "all" else [args.batch]
     paths: list[Path] = []
     for b in batches:
         print(f"Running {b}...")
-        paths.extend(run_batch(b, debug=args.debug, l0_threshold=args.l0_threshold))
+        paths.extend(run_batch(b, debug=args.debug, l0_threshold=args.l0_threshold, max_workers=args.workers))
     for p in paths:
         print(f"Wrote {p}")
     return 0
