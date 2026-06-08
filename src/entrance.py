@@ -311,16 +311,17 @@ def _make_fallback_escalation(raw_text=''):
 
 
 # ============================================================
-# L0 拦截判定（V2：仅 manual 触发升级处置）
+# L0 拦截判定（manual/angry → 升级处置）
 # ============================================================
 
 def _check_l0_intercept(l0: L0Output):
     """
     检查是否触发人工升级处置。
 
-    V2变更：只有 manual 触发立即拦截升级。
-    angry/urgent/sad/non_biz 不再走升级处置流程，
-    而是由 Stage 2 风险评估和 Stage 3 分派处理。
+    V2处置：
+      - manual: 用户主动要求转人工 → 立即升级
+      - angry:  用户愤怒/辱骂 → 跳过L1回复，标准安抚+优先转人工
+      - urgent: 优先级高于angry，走case=2紧急直通（由后续分支处理）
 
     Returns:
         tuple: (should_intercept: bool, triggered_tags: list[str])
@@ -329,7 +330,13 @@ def _check_l0_intercept(l0: L0Output):
     for tag_type, tag in l0.tags.items():
         if tag.triggered:
             triggered.append(tag_type)
-    should_intercept = l0.should_escalate  # manual触发
+
+    manual_hit = l0.tags.get('manual') and l0.tags['manual'].triggered
+    urgent_hit = l0.tags.get('urgent') and l0.tags['urgent'].triggered
+    angry_hit = l0.tags.get('angry') and l0.tags['angry'].triggered
+
+    # 优先级：manual > urgent > angry。urgent由case=2分支处理，不在这里截走。
+    should_intercept = bool(manual_hit or (angry_hit and not urgent_hit))
     return should_intercept, triggered
 
 
@@ -476,12 +483,12 @@ def entrance(messages, l0_threshold=0.7, debug=False, region=None):
                 if tag.probability > 0.1:
                     print(f'  {t}: {tag.probability:.2f} (action={tag.action})')
 
-        # ---- 检查 manual 拦截 (case=0) ----
+        # ---- 检查 manual/angry 拦截 (case=0) ----
         should_intercept, triggered_tags = _check_l0_intercept(l0)
 
         if should_intercept:
             if debug:
-                print(f'[entrance] L0 manual拦截! → case=0')
+                print(f'[entrance] L0升级拦截! tags={triggered_tags} → case=0')
 
             # 升级处置
             escalation_data = _escalate_to_human(
@@ -490,6 +497,13 @@ def entrance(messages, l0_threshold=0.7, debug=False, region=None):
             escalation_data["l0_tags"] = {
                 t: tag.probability for t, tag in l0.tags.items()
             }
+            escalation_data["triggered_tags"] = triggered_tags
+            escalation_data["escalation_priority"] = (
+                "manual" if "manual" in triggered_tags else
+                "urgent" if "urgent" in triggered_tags else
+                "high" if "angry" in triggered_tags else
+                "normal"
+            )
 
             return {
                 "case": 0,
