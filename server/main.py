@@ -11,6 +11,7 @@ import traceback
 
 # Ensure entrance and its dependencies are importable
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _PROJECT_ROOT)  # project root → v3/, src/ both reachable
 sys.path.insert(0, os.path.join(_PROJECT_ROOT, 'src'))
 
 from fastapi import FastAPI, UploadFile, File
@@ -63,11 +64,21 @@ async def health():
 
 
 async def _run_entrance(messages: list[dict], l0_threshold: float, debug: bool):
-    """Run entrance in a thread to avoid blocking the event loop."""
+    """Run V2 entrance in a thread to avoid blocking the event loop."""
     from entrance import entrance
     loop = asyncio.get_running_loop()
     return await asyncio.wait_for(
         loop.run_in_executor(None, lambda: entrance(messages, l0_threshold, debug)),
+        timeout=120,
+    )
+
+
+async def _run_v3_entrance(messages: list[dict], debug: bool):
+    """Run V3 entrance in a thread to avoid blocking the event loop."""
+    from v3.entrance import entrance as v3_entrance
+    loop = asyncio.get_running_loop()
+    return await asyncio.wait_for(
+        loop.run_in_executor(None, lambda: v3_entrance(messages, debug)),
         timeout=120,
     )
 
@@ -95,6 +106,43 @@ async def chat(request: ChatRequest):
             yield f"event: progress\ndata: {json.dumps({'stage': stage, 'elapsed': round(elapsed, 1)}, ensure_ascii=False)}\n\n"
 
             # Final result
+            yield f"event: result\ndata: {json.dumps(result, ensure_ascii=False)}\n\n"
+
+        except Exception as e:
+            yield f"event: error\ndata: {json.dumps({'message': str(e), 'traceback': traceback.format_exc()}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+class ChatV3Request(BaseModel):
+    messages: list[dict] = Field(..., description="OpenAI format messages")
+    debug: bool = Field(False, description="Enable debug logging")
+
+
+@app.post("/api/chat/v3")
+async def chat_v3(request: ChatV3Request):
+    """
+    V3 SSE streaming chat endpoint.
+    Single-stage L1 intent routing only — no L0/L2/L3.
+    """
+    async def event_stream():
+        try:
+            yield f"event: progress\ndata: {json.dumps({'stage': 'v3_l1_start'}, ensure_ascii=False)}\n\n"
+
+            start_time = time.time()
+            result = await _run_v3_entrance(request.messages, request.debug)
+            elapsed = time.time() - start_time
+
+            yield f"event: progress\ndata: {json.dumps({'stage': 'v3_l1', 'elapsed': round(elapsed, 1)}, ensure_ascii=False)}\n\n"
+
             yield f"event: result\ndata: {json.dumps(result, ensure_ascii=False)}\n\n"
 
         except Exception as e:

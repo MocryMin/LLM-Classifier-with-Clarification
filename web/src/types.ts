@@ -47,8 +47,8 @@ export interface Case1Data {
   primary_intent: IntentResult;
   top_candidates: Array<{ l1: string; l2: string; probability: number }>;
   needs_clarification: boolean;
-  slots: Slots;
-  operation: Operation;
+  slots?: Slots;              // V3 removed
+  operation?: Operation;      // V3 removed
   user_output: string;
   reason: string;
   // V2 新增

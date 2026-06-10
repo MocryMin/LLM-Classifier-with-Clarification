@@ -23,6 +23,7 @@ interface AppState {
   rightSidebarOpen: boolean;
   l0Threshold: number;
   debugMode: boolean;
+  useV3: boolean;
 
   // Actions
   sendMessage: (content: string) => Promise<void>;
@@ -50,6 +51,7 @@ interface AppState {
   toggleRightSidebar: () => void;
   setL0Threshold: (v: number) => void;
   setDebugMode: (v: boolean) => void;
+  setUseV3: (v: boolean) => void;
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -65,6 +67,7 @@ export const useStore = create<AppState>((set, get) => ({
   rightSidebarOpen: true,
   l0Threshold: 0.7,
   debugMode: false,
+  useV3: false,
 
   sendMessage: async (content: string) => {
     const state = get();
@@ -95,46 +98,43 @@ export const useStore = create<AppState>((set, get) => ({
       results: Object.keys(saveResults).length > 0 ? saveResults : undefined,
     }).catch(() => {});
 
-    // ★ Capture conversation ID in closure — response always saved to the right conversation
+    // ★ Capture conversation ID in closure
     const targetConvId = convId;
 
-    api.chatSSE(
-      apiMessages,
-      state.l0Threshold,
-      state.debugMode,
-      (progress) => set({ progress }),
-      (result) => {
-        const aiMsg: MessageUnit = {
-          id: generateId(),
-          message: { role: 'assistant', content: getMessageText(result) },
-          entranceResult: result,
-        };
+    // Shared callbacks
+    const onProgress = (progress: ProgressEvent) => set({ progress });
+    const onResult = (result: EntranceResult) => {
+      const aiMsg: MessageUnit = {
+        id: generateId(),
+        message: { role: 'assistant', content: getMessageText(result) },
+        entranceResult: result,
+      };
+      if (get().conversationId === targetConvId) {
+        set({ messages: [...get().messages, aiMsg], isLoading: false, progress: null });
+      } else {
+        set({ isLoading: false, progress: null });
+      }
+      const allMessages = [...apiMessages, aiMsg.message];
+      const allResults: Record<string, unknown> = {};
+      updatedMessages.forEach((m, i) => {
+        if (m.entranceResult) allResults[String(i)] = m.entranceResult;
+      });
+      allResults[String(apiMessages.length)] = result;
+      api.saveConversation(targetConvId, {
+        messages: allMessages,
+        meta: { l0_threshold: state.l0Threshold },
+        results: allResults,
+      }).catch(() => {});
+    };
+    const onError = (error: { message: string }) => {
+      set({ isLoading: false, error: error.message, progress: null });
+    };
 
-        // If user is still on same conversation, update UI
-        if (get().conversationId === targetConvId) {
-          const current = get().messages;
-          set({ messages: [...current, aiMsg], isLoading: false, progress: null });
-        } else {
-          set({ isLoading: false, progress: null });
-        }
-
-        // Always save to the target conversation (even if user switched away)
-        const allMessages = [...apiMessages, aiMsg.message];
-        const allResults: Record<string, unknown> = {};
-        updatedMessages.forEach((m, i) => {
-          if (m.entranceResult) allResults[String(i)] = m.entranceResult;
-        });
-        allResults[String(apiMessages.length)] = result;
-        api.saveConversation(targetConvId, {
-          messages: allMessages,
-          meta: { l0_threshold: state.l0Threshold },
-          results: allResults,
-        }).catch(() => {});
-      },
-      (error) => {
-        set({ isLoading: false, error: error.message, progress: null });
-      },
-    );
+    if (state.useV3) {
+      api.chatV3(apiMessages, state.debugMode, onProgress, onResult, onError);
+    } else {
+      api.chatSSE(apiMessages, state.l0Threshold, state.debugMode, onProgress, onResult, onError);
+    }
   },
 
   editMessage: (id: string, newContent: string) => {
@@ -196,41 +196,39 @@ export const useStore = create<AppState>((set, get) => ({
 
     const targetConvId = convId;
 
-    api.chatSSE(
-      msgsToSend,
-      state.l0Threshold,
-      state.debugMode,
-      (progress) => set({ progress }),
-      (result) => {
-        const aiMsg: MessageUnit = {
-          id: generateId(),
-          message: { role: 'assistant', content: getMessageText(result) },
-          entranceResult: result,
-        };
+    const onResendProgress = (progress: ProgressEvent) => set({ progress });
+    const onResendResult = (result: EntranceResult) => {
+      const aiMsg: MessageUnit = {
+        id: generateId(),
+        message: { role: 'assistant', content: getMessageText(result) },
+        entranceResult: result,
+      };
+      if (get().conversationId === targetConvId) {
+        const truncated = get().messages.slice(0, index);
+        set({ messages: [...truncated, aiMsg], isLoading: false, progress: null });
+      } else {
+        set({ isLoading: false, progress: null });
+      }
+      if (targetConvId) {
+        const allMessages = [...msgsToSend, aiMsg.message];
+        const allResults: Record<string, unknown> = {};
+        allResults[String(msgsToSend.length)] = result;
+        api.saveConversation(targetConvId, {
+          messages: allMessages,
+          meta: { l0_threshold: state.l0Threshold },
+          results: allResults,
+        }).catch(() => {});
+      }
+    };
+    const onResendError = (error: { message: string }) => {
+      set({ isLoading: false, error: error.message, progress: null });
+    };
 
-        if (get().conversationId === targetConvId) {
-          const truncated = get().messages.slice(0, index);
-          set({ messages: [...truncated, aiMsg], isLoading: false, progress: null });
-        } else {
-          set({ isLoading: false, progress: null });
-        }
-
-        // Always save to target conversation
-        if (targetConvId) {
-          const allMessages = [...msgsToSend, aiMsg.message];
-          const allResults: Record<string, unknown> = {};
-          allResults[String(msgsToSend.length)] = result;
-          api.saveConversation(targetConvId, {
-            messages: allMessages,
-            meta: { l0_threshold: state.l0Threshold },
-            results: allResults,
-          }).catch(() => {});
-        }
-      },
-      (error) => {
-        set({ isLoading: false, error: error.message, progress: null });
-      },
-    );
+    if (state.useV3) {
+      api.chatV3(msgsToSend, state.debugMode, onResendProgress, onResendResult, onResendError);
+    } else {
+      api.chatSSE(msgsToSend, state.l0Threshold, state.debugMode, onResendProgress, onResendResult, onResendError);
+    }
   },
 
   createNewConversation: async () => {
@@ -336,4 +334,5 @@ export const useStore = create<AppState>((set, get) => ({
   toggleRightSidebar: () => set(s => ({ rightSidebarOpen: !s.rightSidebarOpen })),
   setL0Threshold: (v) => set({ l0Threshold: v }),
   setDebugMode: (v) => set({ debugMode: v }),
+  setUseV3: (v) => set({ useV3: v }),
 }));

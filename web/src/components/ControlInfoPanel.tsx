@@ -71,7 +71,7 @@ function getPriority(key: string, isTopLevel: boolean): number {
 const HELP: Record<string, string> = {
   case: '路由结果。0=L0拦截升级 / 1=正常路由 / 2=紧急直通',
   risk_level: '风险评估等级。low=低风险(生成式回复) / medium=中风险(FAQ优先+审核) / high=高风险(FAQ+人工)',
-  response_mode: '回复模式。generative=LLM直出 / faq_first=FAQ优先 / faq_only_human=FAQ+人工 / direct_guide=紧急操作指引',
+  response_mode: '回复模式。V2: generative/faq_first/faq_only_human/direct_guide | V3: v3=统一路由',
   tag_dispositions: 'L0标签处置动作。escalate=升级人工 / risk_bump=风险+1 / skip_risk=跳过评估 / tone_soften=语气调整 / redirect=引导回业务',
   decision_trail: '风险评估决策链。每步规则的输入→输出→理由，可审计追溯',
   call_body: '人工介入接口调用标记',
@@ -81,8 +81,8 @@ const HELP: Record<string, string> = {
   primary_intent: 'L1分类的主导意图（一级/二级/置信度）',
   top_candidates: '概率>0.1的候选意图列表',
   needs_clarification: '是否需要向用户发起澄清',
-  slots: '槽位信息。all_slots=全部 / filled_slots=已填 / missing_slots=缺失',
-  operation: '操作决策类型。direct_reply=集团直接答复 / route_to_subsidiary=路由子公司(含tool_call) / fallback=兜底。L1不收集槽位',
+  slots: 'V2槽位信息。all_slots=全部 / filled_slots=已填 / missing_slots=缺失。V3不收集槽位',
+  operation: 'V2操作决策。direct_reply=集团直接答复 / route_to_subsidiary=路由子公司(含tool_call) / fallback=兜底。V3路由信息在user_output的###call中',
   user_output: '面向用户的输出文本',
   reason: '判断依据',
   faq_matched: 'FAQ是否命中（当前FAQ库为空）',
@@ -165,6 +165,7 @@ function ModeBadge({ mode }: { mode: string }) {
   const labels: Record<string, string> = {
     generative: '生成式', faq_first: 'FAQ优先',
     faq_only_human: 'FAQ+人工', direct_guide: '紧急直通',
+    v3: 'V3路由',
   }
   return (
     <span className="text-[10px] px-1.5 py-0 border border-gray-600 rounded font-mono text-gray-400">
@@ -450,6 +451,9 @@ function CaseLabel({ result }: { result: EntranceResult }) {
     1: 'L1 意图路由',
     2: '紧急直通',
   }
+  // V3 case=1 uses response_mode="v3" to distinguish
+  const mode = (result as Record<string, unknown>).response_mode
+  if (mode === 'v3') return <span>V3 意图路由</span>
   return <span>{labels[result.case] || `case=${result.case}`}</span>
 }
 

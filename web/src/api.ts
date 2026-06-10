@@ -63,6 +63,66 @@ export function chatSSE(
   return controller;
 }
 
+// ─── V3 Chat ──────────────────────────────────────────────────
+export function chatV3(
+  messages: Message[],
+  debug: boolean,
+  onProgress: (e: ProgressEvent) => void,
+  onResult: (r: EntranceResult) => void,
+  onError: (e: ChatError) => void,
+): AbortController {
+  const controller = new AbortController();
+
+  fetch(`${BASE}/api/chat/v3`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages, debug }),
+    signal: controller.signal,
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        onError({ message: `HTTP ${response.status}: ${response.statusText}` });
+        return;
+      }
+      const reader = response.body?.getReader();
+      if (!reader) { onError({ message: 'No response body' }); return; }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        let eventType = '';
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            eventType = line.slice(7).trim();
+          } else if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            try {
+              const parsed = JSON.parse(data);
+              if (eventType === 'progress') onProgress(parsed as ProgressEvent);
+              else if (eventType === 'result') onResult(parsed as EntranceResult);
+              else if (eventType === 'error') onError(parsed as ChatError);
+            } catch { /* skip parse errors in partial reads */ }
+          }
+        }
+      }
+    })
+    .catch((err) => {
+      if (err.name !== 'AbortError') {
+        onError({ message: err.message || 'Network error' });
+      }
+    });
+
+  return controller;
+}
+
 // ─── Conversations ───────────────────────────────────────────
 export async function listConversations(): Promise<ConversationListItem[]> {
   const r = await fetch(`${BASE}/api/conversations`);
