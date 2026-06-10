@@ -158,3 +158,20 @@ class Prompt:
             if s.title == title:
                 return s
         return None
+
+    def _find_content(self, cls):
+        """在 sections 中查找第一个指定类型的 content."""
+        for s in self.sections:
+            if isinstance(s.content, cls):
+                return s.content
+        return None
+
+    def _find_text(self, title: str) -> str:
+        """查找指定标题的段落文本内容."""
+        section = self.section_by_title(title)
+        if section is None:
+            return ""
+        content = section.content
+        if hasattr(content, "text"):
+            return content.text
+        return ""

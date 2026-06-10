@@ -1,0 +1,1510 @@
+[
+  {
+    "id": "golden_001",
+    "messages": [
+      {
+        "role": "user",
+        "content": "你好，我第一次用这个保险客服，想先了解一下你们能帮我做什么。"
+      }
+    ],
+    "expected_l1": "开场",
+    "expected_l2": "欢迎引导",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_002",
+    "messages": [
+      {
+        "role": "user",
+        "content": "您好，进来先打个招呼，我想看看这里可以咨询哪些保险问题。"
+      }
+    ],
+    "expected_l1": "开场",
+    "expected_l2": "欢迎引导",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_003",
+    "messages": [
+      {
+        "role": "user",
+        "content": "你好"
+      },
+      {
+        "role": "assistant",
+        "content": "您好，我可以帮您咨询投保、保单、理赔等保险相关问题。"
+      },
+      {
+        "role": "user",
+        "content": "好的，那你先介绍一下这个客服能处理哪些事吧。"
+      }
+    ],
+    "expected_l1": "开场",
+    "expected_l2": "欢迎引导",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_004",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我有个保险问题想问，但还没想好是投保还是保单方面。"
+      }
+    ],
+    "expected_l1": "开场",
+    "expected_l2": "意图澄清",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_005",
+    "messages": [
+      {
+        "role": "user",
+        "content": "帮我看看保险的事，具体要办什么我也说不太清。"
+      }
+    ],
+    "expected_l1": "开场",
+    "expected_l2": "意图澄清",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_006",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我想处理一下我的保险"
+      },
+      {
+        "role": "assistant",
+        "content": "请问您是想咨询投保、查询保单、缴费变更，还是理赔相关问题？"
+      },
+      {
+        "role": "user",
+        "content": "我还不确定，就是想先让你帮我分辨一下该问哪类。"
+      }
+    ],
+    "expected_l1": "开场",
+    "expected_l2": "意图澄清",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_007",
+    "messages": [
+      {
+        "role": "user",
+        "content": "你们客服能帮我查一下附近哪家饭店比较好吃吗？"
+      }
+    ],
+    "expected_l1": "开场",
+    "expected_l2": "未覆盖兜底",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_008",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我想让你帮我写一份离职申请，这个可以吗？"
+      }
+    ],
+    "expected_l1": "开场",
+    "expected_l2": "未覆盖兜底",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_009",
+    "messages": [
+      {
+        "role": "user",
+        "content": "今天上海天气怎么样？"
+      },
+      {
+        "role": "assistant",
+        "content": "我主要提供保险相关服务，您可以咨询投保、保单或理赔问题。"
+      },
+      {
+        "role": "user",
+        "content": "那你还是先别管保险了，帮我推荐一下周末去哪玩。"
+      }
+    ],
+    "expected_l1": "开场",
+    "expected_l2": "未覆盖兜底",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_010",
+    "messages": [
+      {
+        "role": "user",
+        "content": "你们现在有哪些保险产品，能大概介绍一下保障内容和适合人群吗？"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "产品咨询",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_011",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我想比较一下重疾险、医疗险和意外险分别有什么区别。"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "产品咨询",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_012",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我最近想买保险"
+      },
+      {
+        "role": "assistant",
+        "content": "您想了解哪类产品，比如健康险、车险、寿险年金或意外险？"
+      },
+      {
+        "role": "user",
+        "content": "先不用定哪一种，我想先听听你们各类产品的大概保障范围。"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "产品咨询",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_013",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我想给自己买一份百万医疗险，想知道怎么买比较合适。"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "健康险投保",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_014",
+    "messages": [
+      {
+        "role": "user",
+        "content": "家里老人想配置重疾险或医疗险，可以帮我看看投保方向吗？"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "健康险投保",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_015",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我想买个健康类保险"
+      },
+      {
+        "role": "assistant",
+        "content": "您更关注医疗报销、重大疾病保障，还是其他健康保障？"
+      },
+      {
+        "role": "user",
+        "content": "主要是住院医疗报销这块，想看看能不能投保一份医疗险。"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "健康险投保",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_016",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我的新车刚上牌，想买交强险和商业车险。"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "车险投保",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_017",
+    "messages": [
+      {
+        "role": "user",
+        "content": "车险快到期了，想重新报价投保，看看三者险买多少合适。"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "车险投保",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_018",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我想给车买保险"
+      },
+      {
+        "role": "assistant",
+        "content": "您是新车首次投保，还是原车险到期续保呢？"
+      },
+      {
+        "role": "user",
+        "content": "是原来的车险快到期了，想看看今年怎么投保车险。"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "车险投保",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_019",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我想给自己买一份终身寿险，主要考虑家庭保障。"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "寿险/年金投保",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_020",
+    "messages": [
+      {
+        "role": "user",
+        "content": "有没有年金险可以用来做孩子以后教育金规划？"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "寿险/年金投保",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_021",
+    "messages": [
+      {
+        "role": "user",
+        "content": "想买一个偏长期储蓄的保险"
+      },
+      {
+        "role": "assistant",
+        "content": "您更倾向于寿险保障，还是年金领取类产品？"
+      },
+      {
+        "role": "user",
+        "content": "应该是年金险，想以后退休每年能领钱。"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "寿险/年金投保",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_022",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我下个月要出差，想买一份短期意外险。"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "意外险投保",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_023",
+    "messages": [
+      {
+        "role": "user",
+        "content": "孩子学校春游，我想给他买一份意外伤害保险。"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "意外险投保",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_024",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我想买个便宜点的保障"
+      },
+      {
+        "role": "assistant",
+        "content": "您主要想保障疾病、车辆、寿险年金，还是意外风险？"
+      },
+      {
+        "role": "user",
+        "content": "主要怕摔伤、交通事故这些意外，想投保意外险。"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "意外险投保",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_025",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我想给家里的猫买宠物保险，你们有这种险种可以投保吗？"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "其他险种投保",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_026",
+    "messages": [
+      {
+        "role": "user",
+        "content": "公司想买雇主责任险，能不能了解一下投保方式？"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "其他险种投保",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_027",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我不是买车险也不是健康险"
+      },
+      {
+        "role": "assistant",
+        "content": "请问您想投保的是哪类保险？"
+      },
+      {
+        "role": "user",
+        "content": "想给店铺买财产险，主要担心火灾和水损。"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "其他险种投保",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_028",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我刚在线投保成功，电子保单什么时候能拿到？"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "承保/保单获取",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_029",
+    "messages": [
+      {
+        "role": "user",
+        "content": "显示已经承保了，但我没收到保单邮件，想问一下怎么获取。"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "承保/保单获取",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_030",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我昨天提交了投保"
+      },
+      {
+        "role": "assistant",
+        "content": "您是想了解审核进度、是否承保，还是获取保单文件？"
+      },
+      {
+        "role": "user",
+        "content": "页面说已经承保，我就是想下载电子保单。"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "承保/保单获取",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_031",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我投保健康险时填了高血压病史，想问会不会影响核保。"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "核保",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_032",
+    "messages": [
+      {
+        "role": "user",
+        "content": "投保申请提交后一直显示人工核保中，想了解大概怎么处理。"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "核保",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_033",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我买保险时健康告知有一项不确定"
+      },
+      {
+        "role": "assistant",
+        "content": "您是想咨询健康告知如何填写，还是想了解核保结果影响？"
+      },
+      {
+        "role": "user",
+        "content": "主要是想知道这种情况核保会不会被拒保或加费。"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "核保",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_034",
+    "messages": [
+      {
+        "role": "user",
+        "content": "万一我查出了甲状腺结节需要手术，重疾险能赔吗？"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "核赔",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_035",
+    "messages": [
+      {
+        "role": "user",
+        "content": "万一我在国外旅游时生病住院，意外险能不能报销？"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "核赔",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_036",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我最近想了解一下保险理赔的事情。"
+      },
+      {
+        "role": "assistant",
+        "content": "您是想理赔报案，还是想了解具体什么情况能赔？"
+      },
+      {
+        "role": "user",
+        "content": "假如我把车借给朋友开出了事故，车险能赔吗？"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "核赔",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_037",
+    "messages": [
+      {
+        "role": "user",
+        "content": "帮我查一下我名下现在有哪些保单。"
+      }
+    ],
+    "expected_l1": "保单服务",
+    "expected_l2": "保单查询",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_038",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我想看一下去年买的那份医疗险保单状态还在不在有效期。"
+      }
+    ],
+    "expected_l1": "保单服务",
+    "expected_l2": "保单查询",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_039",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我想确认一下自己的保险"
+      },
+      {
+        "role": "assistant",
+        "content": "您是想查询保单信息、缴费情况，还是办理变更？"
+      },
+      {
+        "role": "user",
+        "content": "先查保单信息，看看保额、保障期限和状态。"
+      }
+    ],
+    "expected_l1": "保单服务",
+    "expected_l2": "保单查询",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_040",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我的保单快到缴费日了，想问怎么交续期保费。"
+      }
+    ],
+    "expected_l1": "保单服务",
+    "expected_l2": "续期缴费",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_041",
+    "messages": [
+      {
+        "role": "user",
+        "content": "银行卡扣款失败了，续期保费还能补交吗？"
+      }
+    ],
+    "expected_l1": "保单服务",
+    "expected_l2": "续期缴费",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_042",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我收到一条保费提醒"
+      },
+      {
+        "role": "assistant",
+        "content": "您是想确认缴费金额、缴费方式，还是查看是否已扣款？"
+      },
+      {
+        "role": "user",
+        "content": "想知道这期保费怎么续交，之前绑定的卡好像不能用了。"
+      }
+    ],
+    "expected_l1": "保单服务",
+    "expected_l2": "续期缴费",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_043",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我想把保单里的联系电话改成新的手机号。"
+      }
+    ],
+    "expected_l1": "保单服务",
+    "expected_l2": "保单变更",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_044",
+    "messages": [
+      {
+        "role": "user",
+        "content": "受益人想从父母改成配偶，这个保单变更怎么办？"
+      }
+    ],
+    "expected_l1": "保单服务",
+    "expected_l2": "保单变更",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_045",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我的保单信息有点变化"
+      },
+      {
+        "role": "assistant",
+        "content": "您想变更联系方式、缴费账户、受益人，还是其他保单信息？"
+      },
+      {
+        "role": "user",
+        "content": "主要是投保人的证件有效期更新了，想改保单资料。"
+      }
+    ],
+    "expected_l1": "保单服务",
+    "expected_l2": "保单变更",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_046",
+    "messages": [
+      {
+        "role": "user",
+        "content": "这份年金险我不想继续交了，想了解退保怎么操作。"
+      }
+    ],
+    "expected_l1": "保单服务",
+    "expected_l2": "退保/减保",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_047",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我想把保额降一点，保费压力太大了，可以减保吗？"
+      }
+    ],
+    "expected_l1": "保单服务",
+    "expected_l2": "退保/减保",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_048",
+    "messages": [
+      {
+        "role": "user",
+        "content": "这张保单我想处理一下"
+      },
+      {
+        "role": "assistant",
+        "content": "您是想查询、变更、缴费，还是退保或减保？"
+      },
+      {
+        "role": "user",
+        "content": "想退掉，或者至少把保额减下来，看看退保减保怎么办。"
+      }
+    ],
+    "expected_l1": "保单服务",
+    "expected_l2": "退保/减保",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_049",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我想问下保单能不能贷款，怎么把现金价值借出来？"
+      }
+    ],
+    "expected_l1": "保单服务",
+    "expected_l2": "保单贷款/还款",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_050",
+    "messages": [
+      {
+        "role": "user",
+        "content": "之前做过保单贷款，现在想提前还款，入口在哪里？"
+      }
+    ],
+    "expected_l1": "保单服务",
+    "expected_l2": "保单贷款/还款",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_051",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我的保单有贷款功能吗？"
+      },
+      {
+        "role": "assistant",
+        "content": "您是想了解保单贷款还是其他保单业务？"
+      },
+      {
+        "role": "user",
+        "content": "就是保单贷款，还有后面怎么还利息和本金。"
+      }
+    ],
+    "expected_l1": "保单服务",
+    "expected_l2": "保单贷款/还款",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_052",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我的分红险今年分红什么时候能查到？"
+      }
+    ],
+    "expected_l1": "保单服务",
+    "expected_l2": "分红/年金/领取",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_053",
+    "messages": [
+      {
+        "role": "user",
+        "content": "年金到了领取年龄，我想办理领取。"
+      }
+    ],
+    "expected_l1": "保单服务",
+    "expected_l2": "分红/年金/领取",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_054",
+    "messages": [
+      {
+        "role": "user",
+        "content": "这份保单好像每年有钱可以领。"
+      },
+      {
+        "role": "assistant",
+        "content": "您说的是分红、年金或生存金领取相关问题吗？"
+      },
+      {
+        "role": "user",
+        "content": "对，我想查一下能领多少，顺便看怎么领取。"
+      }
+    ],
+    "expected_l1": "保单服务",
+    "expected_l2": "分红/年金/领取",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_055",
+    "messages": [
+      {
+        "role": "user",
+        "content": "保单因为没交费失效了，现在还能复效吗？"
+      }
+    ],
+    "expected_l1": "保单服务",
+    "expected_l2": "保单复效",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_056",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我想恢复一张已经中止效力的保险合同。"
+      }
+    ],
+    "expected_l1": "保单服务",
+    "expected_l2": "保单复效",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_057",
+    "messages": [
+      {
+        "role": "user",
+        "content": "之前那张寿险断交了。"
+      },
+      {
+        "role": "assistant",
+        "content": "您是想咨询补缴保费、恢复保单效力，还是退保相关问题？"
+      },
+      {
+        "role": "user",
+        "content": "不是退保，是想把失效保单重新恢复有效。"
+      }
+    ],
+    "expected_l1": "保单服务",
+    "expected_l2": "保单复效",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_058",
+    "messages": [
+      {
+        "role": "user",
+        "content": "家人住院了，我要先报个理赔案。"
+      }
+    ],
+    "expected_l1": "理赔服务",
+    "expected_l2": "理赔报案",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_059",
+    "messages": [
+      {
+        "role": "user",
+        "content": "发生意外摔伤，需要在哪里提交理赔报案？"
+      }
+    ],
+    "expected_l1": "理赔服务",
+    "expected_l2": "理赔报案",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_060",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我这边有个医疗费用想走保险。"
+      },
+      {
+        "role": "assistant",
+        "content": "您是要发起理赔报案，还是查询已提交案件的进度？"
+      },
+      {
+        "role": "user",
+        "content": "还没提交过，先帮我报案。"
+      }
+    ],
+    "expected_l1": "理赔服务",
+    "expected_l2": "理赔报案",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_061",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我上周提交的理赔，现在处理到哪一步了？"
+      }
+    ],
+    "expected_l1": "理赔服务",
+    "expected_l2": "理赔进度查询",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_062",
+    "messages": [
+      {
+        "role": "user",
+        "content": "理赔款还没到账，帮我查下案件进度。"
+      }
+    ],
+    "expected_l1": "理赔服务",
+    "expected_l2": "理赔进度查询",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_063",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我已经交了理赔资料。"
+      },
+      {
+        "role": "assistant",
+        "content": "您现在想补充材料，还是查询理赔审核进展？"
+      },
+      {
+        "role": "user",
+        "content": "查询进展，想知道审核完没有。"
+      }
+    ],
+    "expected_l1": "理赔服务",
+    "expected_l2": "理赔进度查询",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_064",
+    "messages": [
+      {
+        "role": "user",
+        "content": "申请住院理赔需要准备哪些材料？"
+      }
+    ],
+    "expected_l1": "理赔服务",
+    "expected_l2": "理赔材料/条件",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_065",
+    "messages": [
+      {
+        "role": "user",
+        "content": "门诊费用能不能理赔，有什么条件限制？"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "核赔",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_066",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我准备申请理赔，但不知道要带什么。"
+      },
+      {
+        "role": "assistant",
+        "content": "您是想了解理赔材料和申请条件吗？"
+      },
+      {
+        "role": "user",
+        "content": "对，想先确认需要的证明、发票和病历要求。"
+      }
+    ],
+    "expected_l1": "理赔服务",
+    "expected_l2": "理赔材料/条件",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_067",
+    "messages": [
+      {
+        "role": "user",
+        "content": "刚才报的理赔案不需要了，能撤销吗？"
+      }
+    ],
+    "expected_l1": "理赔服务",
+    "expected_l2": "撤销报案",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_068",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我误报了一个理赔案件，想取消报案。"
+      }
+    ],
+    "expected_l1": "理赔服务",
+    "expected_l2": "撤销报案",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_069",
+    "messages": [
+      {
+        "role": "user",
+        "content": "昨天提交的那个事故报案好像弄错了。"
+      },
+      {
+        "role": "assistant",
+        "content": "您是想修改信息，还是撤销这次报案？"
+      },
+      {
+        "role": "user",
+        "content": "撤销，不继续走这个理赔案了。"
+      }
+    ],
+    "expected_l1": "理赔服务",
+    "expected_l2": "撤销报案",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_070",
+    "messages": [
+      {
+        "role": "user",
+        "content": "帮我查一下我这张保单有哪些增值权益。"
+      }
+    ],
+    "expected_l1": "增值服务",
+    "expected_l2": "权益查询",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_071",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我的会员权益还剩几次可以用？"
+      }
+    ],
+    "expected_l1": "增值服务",
+    "expected_l2": "权益查询",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_072",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我买的保险是不是带一些免费服务？"
+      },
+      {
+        "role": "assistant",
+        "content": "您是想查看自己已拥有的权益，还是了解某项服务怎么用？"
+      },
+      {
+        "role": "user",
+        "content": "先查我名下到底有哪些权益和剩余次数。"
+      }
+    ],
+    "expected_l1": "增值服务",
+    "expected_l2": "权益查询",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_073",
+    "messages": [
+      {
+        "role": "user",
+        "content": "你们的增值服务都包括哪些内容？"
+      }
+    ],
+    "expected_l1": "增值服务",
+    "expected_l2": "服务介绍",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_074",
+    "messages": [
+      {
+        "role": "user",
+        "content": "健康管理服务是干什么的，能简单介绍一下吗？"
+      }
+    ],
+    "expected_l1": "增值服务",
+    "expected_l2": "服务介绍",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_075",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我看到保单里有增值服务几个字。"
+      },
+      {
+        "role": "assistant",
+        "content": "您想查询自己是否有权益，还是了解这些服务的内容？"
+      },
+      {
+        "role": "user",
+        "content": "先给我介绍一下这些服务分别是什么。"
+      }
+    ],
+    "expected_l1": "增值服务",
+    "expected_l2": "服务介绍",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_076",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我想预约使用保单里的体检权益。"
+      }
+    ],
+    "expected_l1": "增值服务",
+    "expected_l2": "行权使用",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_077",
+    "messages": [
+      {
+        "role": "user",
+        "content": "专家问诊权益现在怎么兑换使用？"
+      }
+    ],
+    "expected_l1": "增值服务",
+    "expected_l2": "行权使用",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_078",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我查到自己有一次齿科服务。"
+      },
+      {
+        "role": "assistant",
+        "content": "您是想了解服务内容，还是现在预约使用？"
+      },
+      {
+        "role": "user",
+        "content": "现在就想预约使用这个权益。"
+      }
+    ],
+    "expected_l1": "增值服务",
+    "expected_l2": "行权使用",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_079",
+    "messages": [
+      {
+        "role": "user",
+        "content": "道路救援权益具体包含拖车和搭电吗？"
+      }
+    ],
+    "expected_l1": "增值服务",
+    "expected_l2": "服务介绍",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_080",
+    "messages": [
+      {
+        "role": "user",
+        "content": "车停在小区里电瓶没电了，想用道路救援的搭电服务。"
+      }
+    ],
+    "expected_l1": "增值服务",
+    "expected_l2": "高频权益",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_081",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我记得保单有个车主服务。"
+      },
+      {
+        "role": "assistant",
+        "content": "您说的是道路救援这类高频权益吗？"
+      },
+      {
+        "role": "user",
+        "content": "对，想问道路救援能不能帮忙换胎，怎么用。"
+      }
+    ],
+    "expected_l1": "增值服务",
+    "expected_l2": "服务介绍",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_082",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我要投诉，上次办理业务等了很久也没人回复。"
+      }
+    ],
+    "expected_l1": "客户服务",
+    "expected_l2": "投诉建议",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_083",
+    "messages": [
+      {
+        "role": "user",
+        "content": "想给你们提个建议，线上流程太难找了。"
+      }
+    ],
+    "expected_l1": "客户服务",
+    "expected_l2": "投诉建议",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_084",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我对这次服务不太满意。"
+      },
+      {
+        "role": "assistant",
+        "content": "您是想反馈建议，还是提交投诉？"
+      },
+      {
+        "role": "user",
+        "content": "我要正式投诉业务处理慢的问题。"
+      }
+    ],
+    "expected_l1": "客户服务",
+    "expected_l2": "投诉建议",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_085",
+    "messages": [
+      {
+        "role": "user",
+        "content": "能帮我联系一下当时给我办保险的业务员吗？"
+      }
+    ],
+    "expected_l1": "客户服务",
+    "expected_l2": "业务员联系",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_086",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我想查我的保单服务人员是谁。"
+      }
+    ],
+    "expected_l1": "客户服务",
+    "expected_l2": "业务员联系",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_087",
+    "messages": [
+      {
+        "role": "user",
+        "content": "之前跟我对接的销售联系不上了。"
+      },
+      {
+        "role": "assistant",
+        "content": "您是想查询或联系您的业务员吗？"
+      },
+      {
+        "role": "user",
+        "content": "是的，帮我找一下现在负责我的业务员联系方式。"
+      }
+    ],
+    "expected_l1": "客户服务",
+    "expected_l2": "业务员联系",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_088",
+    "messages": [
+      {
+        "role": "user",
+        "content": "你们客服电话是多少？"
+      }
+    ],
+    "expected_l1": "客户服务",
+    "expected_l2": "客服热线",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_089",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我想转人工，客服热线怎么拨打？"
+      }
+    ],
+    "expected_l1": "客户服务",
+    "expected_l2": "客服热线",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_090",
+    "messages": [
+      {
+        "role": "user",
+        "content": "线上说不清楚，我想打电话问。"
+      },
+      {
+        "role": "assistant",
+        "content": "您需要客服热线号码或人工客服联系方式吗？"
+      },
+      {
+        "role": "user",
+        "content": "对，把客服电话告诉我。"
+      }
+    ],
+    "expected_l1": "客户服务",
+    "expected_l2": "客服热线",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_091",
+    "messages": [
+      {
+        "role": "user",
+        "content": "附近哪里有你们的营业网点？"
+      }
+    ],
+    "expected_l1": "客户服务",
+    "expected_l2": "网点查询",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_092",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我想去柜面办理业务，帮我查一下网点地址。"
+      }
+    ],
+    "expected_l1": "客户服务",
+    "expected_l2": "网点查询",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_093",
+    "messages": [
+      {
+        "role": "user",
+        "content": "这个业务必须线下办吗？"
+      },
+      {
+        "role": "assistant",
+        "content": "如果需要线下办理，您想查询附近营业网点吗？"
+      },
+      {
+        "role": "user",
+        "content": "嗯，帮我查最近的直营网点。"
+      }
+    ],
+    "expected_l1": "客户服务",
+    "expected_l2": "网点查询",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_094",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我想了解一下蓝医保。"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "明确产品",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_095",
+    "messages": [
+      {
+        "role": "user",
+        "content": "那个少儿重疾险产品能给我介绍下吗？"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "明确产品",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_096",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我想买保险，已经看中一款了。"
+      },
+      {
+        "role": "assistant",
+        "content": "您想了解哪一款产品？"
+      },
+      {
+        "role": "user",
+        "content": "就想了解那款终身寿险的保障内容和价格。"
+      }
+    ],
+    "expected_l1": "售前服务",
+    "expected_l2": "明确产品",
+    "source_batch": "3"
+  },
+  {
+    "id": "golden_097",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我想给爸妈买份医疗险，60多岁还能投保吗？"
+      },
+      {
+        "role": "assistant",
+        "content": "一般要看具体产品的投保年龄、健康告知和既往病史情况。"
+      },
+      {
+        "role": "user",
+        "content": "先不看新产品了，我突然想起来我上个月已经买了一份百万医疗，帮我查一下电子保单在哪里看。"
+      }
+    ],
+    "expected_l1": "保单服务",
+    "expected_l2": "保单查询",
+    "source_batch": "4"
+  },
+  {
+    "id": "golden_098",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我想把寿险的受益人改成我女儿，需要准备什么？"
+      },
+      {
+        "role": "assistant",
+        "content": "变更受益人通常需要投保人身份证明、被保险人同意材料以及受益人信息。"
+      },
+      {
+        "role": "user",
+        "content": "这个等会再说。我刚刚开车追尾了，想问车险理赔要先准备哪些材料？"
+      }
+    ],
+    "expected_l1": "理赔服务",
+    "expected_l2": "理赔材料/条件",
+    "source_batch": "4"
+  },
+  {
+    "id": "golden_099",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我这份保险送的体检权益还能预约吗？"
+      },
+      {
+        "role": "assistant",
+        "content": "可以帮您看一下权益状态。"
+      },
+      {
+        "role": "user",
+        "content": "体检先不约了，我现在在高速上车胎爆了，保单里有道路救援吗？我需要马上叫救援。"
+      }
+    ],
+    "expected_l1": "增值服务",
+    "expected_l2": "高频权益",
+    "source_batch": "4"
+  },
+  {
+    "id": "golden_100",
+    "messages": [
+      {
+        "role": "user",
+        "content": "重疾险一年大概多少钱？30岁买50万保额。"
+      },
+      {
+        "role": "assistant",
+        "content": "保费会受性别、保障期限、缴费年限、是否含身故责任等影响。"
+      },
+      {
+        "role": "user",
+        "content": "我不想在线算了，直接给我人工客服电话吧，我打电话问。"
+      }
+    ],
+    "expected_l1": "客户服务",
+    "expected_l2": "客服热线",
+    "source_batch": "4"
+  },
+  {
+    "id": "golden_101",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我昨天提交的住院理赔，现在审核到哪一步了？"
+      },
+      {
+        "role": "assistant",
+        "content": "理赔进度需要根据报案号或保单号查询。"
+      },
+      {
+        "role": "user",
+        "content": "报案号是 LP202605080031。刚才医院说先不用走保险了，请帮我撤销这个报案。"
+      }
+    ],
+    "expected_l1": "理赔服务",
+    "expected_l2": "撤销报案",
+    "source_batch": "4"
+  }
+]
