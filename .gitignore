@@ -18,6 +18,15 @@ intent_data.json
 prompt/intent_prompts/
 src/generate_intent_prompts.py
 
+# Prompter build artifacts
+prompter/output/
+
+# Deploy backups
+v3/L1_router_v3.txt.bak
+
+# Runtime conversation data
+data/conversations/
+
 # Test samples (only test.xlsx is committed)
 test/test_L0_tag_judge.py
 test/testL0/L0_test_samples.xlsx
