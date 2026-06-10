@@ -150,6 +150,131 @@ def _run_golden_set(
 
 
 # ═══════════════════════════════════════════════════════════
+# 报告生成
+# ═══════════════════════════════════════════════════════════
+
+def generate_golden_report(
+    round_details: list[dict],
+    gold_samples: list[dict],
+    accepted: list[EnrichApplication],
+    rejected: list[EnrichApplication],
+    baseline_details: list[dict] | None = None,
+) -> str:
+    """生成黄金验证报告 (markdown 格式).
+
+    包含:
+      - 总览
+      - 逐轮详情
+      - 各意图准确率明细
+      - 被拒申请列表
+    """
+    lines = [
+        "# L2 Golden Validation Report",
+        "",
+        f"**样本数**: {len(gold_samples)}",
+        f"**覆盖**: {len(set((s['expected_l1'], s['expected_l2']) for s in gold_samples))} 个L1+L2场景",
+        "",
+    ]
+
+    # ── 总览 ──
+    if round_details:
+        baseline = round_details[0]
+        # 最终准确率: 找最后一个 accepted 轮次, 或基线
+        final_acc = baseline['accuracy']
+        final_correct = baseline['correct']
+        for rd in reversed(round_details):
+            if rd.get("action") == "accepted":
+                final_acc = rd.get("accuracy_after", rd.get("accuracy", final_acc))
+                final_correct = rd.get("correct_after", rd.get("correct", final_correct))
+                break
+        lines.extend([
+            "## 总览",
+            "",
+            f"| 指标 | 基线 | 最终 | 变化 |",
+            f"|------|------|------|------|",
+            f"| 准确率 | {baseline['accuracy']:.4f} | {final_acc:.4f} "
+            f"| {final_acc - baseline['accuracy']:+.4f} |",
+            f"| 正确数 | {baseline['correct']} | {final_correct} | |",
+            f"| 接受申请 | — | {len(accepted)} | — |",
+            f"| 拒绝申请 | — | {len(rejected)} | — |",
+            "",
+        ])
+
+    # ── 逐轮详情 ──
+    lines.extend([
+        "## 逐轮详情",
+        "",
+        "| 轮次 | 操作 | confidence | 准确率 | 变化 | 结果 |",
+        "|------|------|-----------|--------|------|------|",
+    ])
+    for rd in round_details:
+        if rd["round"] == 0:
+            lines.append(
+                f"| 0 | baseline | — | {rd['accuracy']:.4f} | — | — |"
+            )
+        else:
+            acc_before = rd.get("accuracy_before", 0)
+            if rd["action"] == "accepted":
+                acc_after = rd.get("accuracy_after", acc_before)
+            else:
+                acc_after = acc_before  # 被拒, 准确率回退到申请前
+            delta = acc_after - acc_before
+            action = "[ACCEPT]" if rd["action"] == "accepted" else "[REJECT]"
+            lines.append(
+                f"| {rd['round']} | {rd['type']} | {rd['confidence']:.2f} "
+                f"| {acc_before:.4f}→{acc_after:.4f} "
+                f"| {delta:+.4f} | {action} |"
+            )
+    lines.append("")
+
+    # ── 各意图准确率 (基于基线) ──
+    if baseline_details:
+        intent_stats: dict[tuple[str, str], dict] = {}
+        for d in baseline_details:
+            key = (d.get("expected_l1", "?"), d.get("expected_l2", "?"))
+            if key not in intent_stats:
+                intent_stats[key] = {"total": 0, "correct": 0}
+            intent_stats[key]["total"] += 1
+            if d.get("correct"):
+                intent_stats[key]["correct"] += 1
+
+        lines.extend([
+            "## 各意图准确率 (基线)",
+            "",
+            "| L1 | L2 | 样本数 | 正确 | 准确率 |",
+            "|----|----|--------|------|--------|",
+        ])
+        for (l1, l2), stats in sorted(intent_stats.items()):
+            acc = stats["correct"] / stats["total"] if stats["total"] > 0 else 0
+            lines.append(
+                f"| {l1} | {l2} | {stats['total']} | {stats['correct']} "
+                f"| {acc:.2%} |"
+            )
+        lines.append("")
+
+    # ── 被拒申请 ──
+    if rejected:
+        lines.extend([
+            "## 被拒申请",
+            "",
+        ])
+        for i, app in enumerate(rejected, 1):
+            reason = ""
+            for rd in round_details:
+                if rd.get("round", 0) > 0 and rd["action"] == "rejected":
+                    if rd.get("rationale", "").startswith(app.rationale[:20]):
+                        reason = rd.get("reason", "")
+            lines.extend([
+                f"### {i}. [{app.operation}] confidence={app.confidence:.2f}",
+                f"**理由**: {app.rationale}",
+                f"**拒绝原因**: {reason}",
+                "",
+            ])
+
+    return "\n".join(lines)
+
+
+# ═══════════════════════════════════════════════════════════
 # 贪心接受
 # ═══════════════════════════════════════════════════════════
 
@@ -182,7 +307,7 @@ def greedy_accept(
     # 基线
     base_prompt = serialize(tree)
     print(f"[golden] baseline: running {max_samples or len(gold_samples)} gold samples (workers={workers})...")
-    baseline_acc, baseline_correct, total, _ = _run_golden_set(
+    baseline_acc, baseline_correct, total, baseline_details = _run_golden_set(
         base_prompt, gold_samples, max_samples=max_samples, workers=workers, verbose=verbose,
     )
     print(f"[golden] baseline accuracy: {baseline_acc:.4f} ({baseline_correct}/{total})")
@@ -264,6 +389,8 @@ def greedy_accept(
                 "confidence": app.confidence,
                 "rationale": app.rationale,
                 "action": "rejected",
+                "accuracy_before": acc_before,
+                "accuracy_after": test_acc,
                 "reason": f"accuracy drop: {acc_before:.4f} -> {test_acc:.4f}",
             })
 
@@ -272,7 +399,7 @@ def greedy_accept(
         f"accuracy: {baseline_acc:.4f} -> {current_acc:.4f}"
     )
 
-    return accepted, rejected, round_details
+    return accepted, rejected, round_details, baseline_details
 
 
 # ═══════════════════════════════════════════════════════════

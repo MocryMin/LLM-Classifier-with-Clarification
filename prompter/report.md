@@ -47,7 +47,7 @@ Step4：**enrich**：喂LLM中间prompt，LLM只能返回"申请"，不能直接
 
 **设计原则**：
 - 申请制。enricher只给建议，不直接写prompt。每条申请含confidence(0-1)和rationale
-- 操作类型严格限定。只有3种：group_description（写L1分组说明）、sample_add（加few-shot）、sample_delete（删矛盾sample）
+- 操作类型严格限定。只有3种：group_description（写L1分组说明）、sample_add（加few-shot）、sample_delete（删现有矛盾sample）
 - 输入粒度精确。每种操作只看它需要的上下文，不给多余信息。description不看routing rules（让数据说话），sample必须看routing rules（让规则把关）
 - 退出门。LLM没把握就不输出，不强制
 
