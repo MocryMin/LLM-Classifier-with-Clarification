@@ -49,7 +49,10 @@ class EnrichApplication:
     rationale: str           # 申请理由 (1-2�?
 
     def __post_init__(self):
-        if self.operation not in ("group_description", "sample_add", "sample_delete"):
+        if self.operation not in (
+            "group_description", "sample_add", "sample_delete",        # L2
+            "modify_keywords", "add_negative_examples", "add_attention",  # L3
+        ):
             raise ValueError(f"Unknown operation: {self.operation!r}")
         if not (0.0 <= self.confidence <= 1.0):
             raise ValueError(f"Confidence must be 0-1, got {self.confidence}")
