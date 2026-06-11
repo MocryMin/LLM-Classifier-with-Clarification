@@ -5,12 +5,12 @@ L2_entry.py — L2 enrich 统一入口
 Co-agent 可直接调用 run_l2_pipeline()，传入 clean JSON 路径即可完成全流程。
 
 流程:
-  1. 构建文法树 (L1_generator)
+  1. 构建 PromptArtifact (文法树 + 渲染文本 双生容器)
   2. enrich 产生申请 (L2_enrich)
   3. 确定性验证 (L2_validator)
   4. 黄金样本贪心验证 (L2_golden_validate, 如提供 golden_samples)
   5. 应用通过的申请 (L2_applier)
-  6. 序列化 → 最终 prompt
+  6. invalidate → 重新序列化 → 最终 prompt
   7. 生成报告
 
 用法:
@@ -23,7 +23,10 @@ Co-agent 可直接调用 run_l2_pipeline()，传入 clean JSON 路径即可完�
         workers=8,
     )
 
-    # result["output_prompt"]        → 最终 prompt 文本
+    # result["output_prompt"]        → 最终 prompt 文本 (面向用户/LLM)
+    # result["output_artifact"]      → PromptArtifact 双生容器 (面向程序, 可继续操作文法树)
+    # result["output_artifact"].tree → 当前文法树
+    # result["output_artifact"].prompt → 当前 prompt 文本 (与 output_prompt 一致)
     # result["report"]               → 黄金验证报告 (markdown)
     # result["metadata"]             → 结构化元数据 (供程序消费)
 """
@@ -36,24 +39,23 @@ from typing import Any
 
 # 兼容直接执行和包导入
 try:
-    from .L1_generator import generate as build_tree
+    from .grammar_tree import PromptArtifact
     from .L2_enrich import enrich
     from .L2_validator import validate_all
     from .L2_golden_validate import greedy_accept, generate_golden_report
     from .L2_applier import apply_all
-    from .serialize import serialize
 except ImportError:
-    from L1_generator import generate as build_tree
+    from grammar_tree import PromptArtifact
     from L2_enrich import enrich
     from L2_validator import validate_all
     from L2_golden_validate import greedy_accept, generate_golden_report
     from L2_applier import apply_all
-    from serialize import serialize
 
 
 def run_l2_pipeline(
     registry: str | Path,
     mode: str = "full",
+    artifact: PromptArtifact | None = None,  # 可传入已有 artifact
     golden_samples: str | Path | None = None,
     model: str = "deepseek-v4-pro",
     workers: int = 8,
@@ -65,9 +67,13 @@ def run_l2_pipeline(
 ) -> dict[str, Any]:
     """L2 enrich 全流程统一入口.
 
+    始终维护两个数据: tree (面向程序) 和 prompt (面向用户/LLM).
+    通过 PromptArtifact 双生容器保持一致.
+
     Args:
         registry: L0.5 产出的 scene_table_clean.json 路径
         mode: "full" | "classify_only"
+        artifact: 已有的 PromptArtifact (None=从 registry 构建)
         golden_samples: 黄金样本 JSON 路径 (None=跳过黄金验证)
         model: LLM 模型名称
         workers: 黄金验证并发数
@@ -79,30 +85,33 @@ def run_l2_pipeline(
 
     Returns:
         {
-            "status": "ok" | "partial" | "no_golden",
-            "output_prompt": str,             # 最终 prompt 文本
-            "output_prompt_path": str | None, # 如果指定了 output_prompt
-            "report": str | None,             # 黄金验证报告 (markdown)
-            "report_path": str | None,        # 如果指定了 output_report
-            "metadata": {                     # 结构化数据, 供程序消费
-                "enrich": {...},
-                "validator": {...},
-                "golden_validate": {...} | None,
-                "applier": {...},
-            },
+            "status": "ok" | "partial" | "no_golden" | "no_applications",
+            "output_prompt": str,                # 最终 prompt 文本 (面向用户/LLM)
+            "output_artifact": PromptArtifact,   # 双生容器 (面向程序, 可继续操作文法树)
+            "output_prompt_path": str | None,
+            "report": str | None,
+            "report_path": str | None,
+            "metadata": {...},
         }
     """
     t_start = datetime.now()
     metadata: dict[str, Any] = {}
 
-    # ── Step 3: 构建文法树 ──
-    if verbose:
-        print(f"[L2 entry] building grammar tree (mode={mode})")
-    tree = build_tree(str(registry), mode=mode)
+    # ── Step 3: 构建/使用 PromptArtifact ──
+    if artifact is not None:
+        if verbose:
+            print(f"[L2 entry] using provided PromptArtifact")
+    else:
+        if verbose:
+            print(f"[L2 entry] building PromptArtifact (mode={mode})")
+        artifact = PromptArtifact.from_registry(str(registry), mode=mode)
+
+    tree = artifact.tree
     intent_count = tree.sections[1].content.total_intents
     group_count = len(tree.sections[1].content.groups)
     if verbose:
-        print(f"[L2 entry] tree: {intent_count} intents in {group_count} groups")
+        print(f"[L2 entry] artifact: {intent_count} intents in {group_count} groups, "
+              f"prompt={len(artifact.prompt)} chars")
 
     # ── Step 4a: enrich 产生申请 ──
     if verbose:
@@ -118,19 +127,15 @@ def run_l2_pipeline(
     }
 
     if not applications:
-        # 无申请 → 直接序列化
-        final_text = serialize(tree)
         elapsed = (datetime.now() - t_start).total_seconds()
         return {
             "status": "no_applications",
-            "output_prompt": final_text,
+            "output_prompt": artifact.prompt,
+            "output_artifact": artifact,
             "output_prompt_path": str(output_prompt) if output_prompt else None,
             "report": None,
             "report_path": None,
-            "metadata": {
-                **metadata,
-                "elapsed_seconds": elapsed,
-            },
+            "metadata": {**metadata, "elapsed_seconds": elapsed},
         }
 
     # ── Step 4b: 确定性验证 ──
@@ -151,18 +156,15 @@ def run_l2_pipeline(
             print(f"  VALIDATOR FAIL [{f['application'].operation}]: {f['reason'][:80]}")
 
     if not validated:
-        final_text = serialize(tree)
         elapsed = (datetime.now() - t_start).total_seconds()
         return {
             "status": "all_rejected_by_validator",
-            "output_prompt": final_text,
+            "output_prompt": artifact.prompt,
+            "output_artifact": artifact,
             "output_prompt_path": str(output_prompt) if output_prompt else None,
             "report": None,
             "report_path": None,
-            "metadata": {
-                **metadata,
-                "elapsed_seconds": elapsed,
-            },
+            "metadata": {**metadata, "elapsed_seconds": elapsed},
         }
 
     # ── Step 4c: 黄金样本贪心验证 ──
@@ -192,26 +194,21 @@ def run_l2_pipeline(
             "rounds": round_details,
         }
 
-        # 生成报告
         report = generate_golden_report(
             round_details, gs, accepted, rejected, baseline_details,
         )
-
-        # 最终应用的 = 通过 validator 且被 golden 接受的
         final_apps = accepted
     else:
         if verbose:
             print(f"[L2 entry] no golden samples, applying all validated")
-        round_details = []
-        accepted = validated
-        rejected = []
         final_apps = validated
 
-    # ── Step 4d: 应用 ──
+    # ── Step 4d: 应用到文法树, 然后 invalidate 让 prompt 重新序列化 ──
     if verbose:
         print(f"[L2 entry] applying {len(final_apps)} applications")
     apply_all(tree, final_apps)
-    final_text = serialize(tree)
+    artifact.invalidate()  # ← tree 已修改, 标记 prompt 缓存失效
+    final_text = artifact.prompt  # ← 重新序列化
 
     metadata["applier"] = {
         "applied_count": len(final_apps),
@@ -256,6 +253,7 @@ def run_l2_pipeline(
     return {
         "status": status,
         "output_prompt": final_text,
+        "output_artifact": artifact,      # ← 双生容器, 后续程序可继续操作 artifact.tree
         "output_prompt_path": output_prompt_path,
         "report": report,
         "report_path": report_path,

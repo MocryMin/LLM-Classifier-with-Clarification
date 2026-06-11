@@ -175,3 +175,47 @@ class Prompt:
         if hasattr(content, "text"):
             return content.text
         return ""
+
+
+@dataclass
+class PromptArtifact:
+    """文法树 + 渲染文本 双生容器.
+
+    tree 是唯一真相源 (source of truth).
+    prompt 通过 serialize(tree) 懒加载, 只在 tree 被修改后重新序列化.
+
+    用法:
+        artifact = PromptArtifact.from_registry("clean.json", mode="full")
+        print(artifact.prompt)           # 获取文本 (面向用户 / LLM)
+        artifact.tree.sections[0]        # 操作文法树 (面向程序)
+        artifact.invalidate()            # 修改 tree 后调用, 让 prompt 重新序列化
+    """
+
+    tree: Prompt
+    _prompt: str | None = field(default=None, init=False, repr=False)
+
+    @property
+    def prompt(self) -> str:
+        """获取当前 prompt 文本. 首次访问或 invalidate() 后重新序列化."""
+        if self._prompt is None:
+            # inline import to avoid circular
+            try:
+                from .serialize import serialize
+            except ImportError:
+                from serialize import serialize
+            self._prompt = serialize(self.tree)
+        return self._prompt
+
+    def invalidate(self):
+        """标记 prompt 缓存失效. tree 被修改后必须调用, 让下次 prompt 访问重新序列化."""
+        self._prompt = None
+
+    @classmethod
+    def from_registry(cls, registry_path: str, mode: str = "full") -> "PromptArtifact":
+        """从 clean JSON 构建双生容器."""
+        try:
+            from .L1_generator import generate as build_tree
+        except ImportError:
+            from L1_generator import generate as build_tree
+        tree = build_tree(registry_path, mode=mode)
+        return cls(tree=tree)
