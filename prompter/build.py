@@ -134,12 +134,17 @@ def build_case1() -> None:
         print(f"[黄金样本] {golden_xlsx.name}")
         print(f"[模式] 全流程 (L0→L1→L2→L3)")
     else:
-        print(f"[黄金样本] 未找到 (跳过 LLM 调优)")
-        print(f"[模式] 快速模式 (仅 L0→L1)")
+        internal_golden = _HERE / "test" / "golden_samples.json"
+        if internal_golden.exists():
+            print(f"[黄金样本] 未在 {GOLDEN_DIR}/ 找到 xlsx，但检测到内部测试集")
+            print(f"[模式] 全流程 (L0→L1→L2→L3, 使用内部 golden_samples.json)")
+        else:
+            print(f"[黄金样本] 未找到 (跳过 LLM 调优)")
+            print(f"[模式] 快速模式 (仅 L0→L1)")
 
     # 3. 编译
     mode = "full"  # 默认需要 L2 澄清
-    _build_pipeline(xlsx_path, mode, golden_xlsx=None if not has_golden else golden_xlsx)
+    _build_pipeline(xlsx_path, mode, golden_xlsx=None if not has_golden else golden_xlsx, verbose=True)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -152,6 +157,9 @@ def build_case2(
     golden_xlsx: str | None = None,
     no_llm: bool = False,
     deploy: bool = False,
+    workers: int = 16,
+    max_samples: int | None = None,
+    verbose: bool = False,
 ) -> None:
     """进阶模式: 自定义参数."""
 
@@ -179,7 +187,7 @@ def build_case2(
             print(f"  或使用 --golden <path> 指定.")
             print(f"  或使用 --no-llm 跳过 LLM 调优 (仅输出 L1 prompt).")
 
-    _build_pipeline(xlsx_p, mode, golden_xlsx=golden_p)
+    _build_pipeline(xlsx_p, mode, golden_xlsx=golden_p, workers=workers, max_samples=max_samples, verbose=verbose)
 
     if deploy:
         _do_deploy()
@@ -193,6 +201,9 @@ def _build_pipeline(
     xlsx_path: Path,
     mode: str,
     golden_xlsx: Path | None = None,
+    workers: int = 16,
+    max_samples: int | None = None,
+    verbose: bool = False,
 ) -> dict:
     """统一流水线: L0→L0.5→L1→(L2)→(L3)."""
 
@@ -266,9 +277,17 @@ def _build_pipeline(
         mode=mode,
         artifact=artifact,
         golden_samples=str(golden_json),
-        workers=4,
-        verbose=False,
+        workers=workers,
+        max_golden_samples=max_samples,
+        verbose=verbose,
     )
+
+    # 保存 L2 中间产物
+    l2_prompt = artifact.prompt
+    l2_path = out_dir / "L2_router_v3.txt"
+    l2_path.write_text(l2_prompt, encoding="utf-8")
+    if verbose:
+        print(f"       [OK] L2 prompt ({len(l2_prompt)} chars) -> {l2_path.name}")
 
     # 如果 L2 有 golden 结果, 继续 L3
     baseline_details = None
@@ -280,7 +299,8 @@ def _build_pipeline(
         _, _, _, baseline_details = _run_golden_set(
             current_prompt,
             json.loads(golden_json.read_text("utf-8")),
-            workers=4,
+            max_samples=max_samples,
+            workers=workers,
             verbose=False,
         )
 
@@ -291,7 +311,8 @@ def _build_pipeline(
             artifact=artifact,
             baseline_details=baseline_details,
             golden_samples=str(golden_json),
-            workers=4,
+            workers=workers,
+            max_errors=max_samples,
             verbose=False,
         )
         l3_report = result_l3.get("report", "")
@@ -459,8 +480,12 @@ def _interactive():
 
         has_golden = golden_path is not None
     else:
-        print(f"[黄金样本] 未找到 (跳过 LLM 调优)")
-        print(f"  如需 LLM 调优, 请将黄金样本 xlsx 放到 {GOLDEN_DIR}/")
+        internal_golden = _HERE / "test" / "golden_samples.json"
+        if internal_golden.exists():
+            print(f"[黄金样本] 未在 {GOLDEN_DIR}/ 找到 xlsx，但检测到内部测试集 (test/golden_samples.json)")
+        else:
+            print(f"[黄金样本] 未找到 (跳过 LLM 调优)")
+            print(f"  如需 LLM 调优, 请将黄金样本 xlsx 放到 {GOLDEN_DIR}/")
 
     # 4. 编译
     mode = "full"  # 默认含 L2 澄清
@@ -498,6 +523,12 @@ if __name__ == "__main__":
     parser.add_argument("--golden", "-g", help="黄金样本 xlsx 路径")
     parser.add_argument("--no-llm", action="store_true",
                        help="跳过 LLM 调优 (仅输出 L1 prompt)")
+    parser.add_argument("--workers", "-w", type=int, default=16,
+                       help="黄金验证并发 worker 数 (默认: 16)")
+    parser.add_argument("--max-samples", type=int, default=None,
+                       help="快速调试用: 限制黄金验证样本数 (默认: 全量)")
+    parser.add_argument("--verbose", "-v", action="store_true",
+                       help="详细输出 (显示 enrich/sample/revision 内容)")
     parser.add_argument("--deploy", "-d", action="store_true",
                        help="编译后自动部署到 v3/")
     parser.add_argument("--list", "-l", action="store_true",
@@ -525,7 +556,9 @@ if __name__ == "__main__":
 
     if args.xlsx:
         build_case2(args.xlsx, mode=args.mode, golden_xlsx=args.golden,
-                    no_llm=args.no_llm, deploy=args.deploy)
+                    no_llm=args.no_llm, deploy=args.deploy,
+                    workers=args.workers, max_samples=args.max_samples,
+                    verbose=args.verbose)
     else:
         # Case 1: 交互式小白模式
         _interactive()

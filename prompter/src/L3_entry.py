@@ -33,14 +33,14 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from .grammar_tree import Prompt, PromptArtifact
+    from .grammar_tree import IntentCatalog, Prompt, PromptArtifact
     from .L2_enrich_application import EnrichApplication, sort_by_confidence
     from .L3_reviser import revise
     from .L3_applier import apply as l3_apply
     from .L2_golden_validate import _run_golden_set, _inject_prompt, _run_single_golden
     from .serialize import serialize
 except ImportError:
-    from grammar_tree import Prompt, PromptArtifact
+    from grammar_tree import IntentCatalog, Prompt, PromptArtifact
     from L2_enrich_application import EnrichApplication, sort_by_confidence
     from L3_reviser import revise
     from L3_applier import apply as l3_apply
@@ -52,7 +52,9 @@ def _extract_errors(baseline_details: list[dict]) -> list[dict]:
     """从基线验证结果中提取分类错误的样本."""
     errors = []
     for d in baseline_details:
-        if not d.get("correct") and not d.get("error"):
+        # d.get("correct") is False → 分类错误
+        # d.get("error") is truthy → API 调用异常 (不算分类错)
+        if d.get("correct") is False and not d.get("error"):
             errors.append(d)
     return errors
 
@@ -77,7 +79,7 @@ def run_l3_pipeline(
     baseline_details: list[dict],
     golden_samples: str | Path | list[dict],
     model: str = "deepseek-v4-pro",
-    workers: int = 4,
+    workers: int =32,
     max_errors: int | None = None,
     api_key: str | None = None,
     output_report: str | Path | None = None,
@@ -192,6 +194,11 @@ def run_l3_pipeline(
             continue
 
         print(f"  -> {len(revisions)} revisions proposed")
+        if verbose:
+            for rev in revisions:
+                target_id = rev.target.split("[")[-1].rstrip("]") if "[" in rev.target else rev.target
+                print(f"       [{rev.operation}] intent={target_id} "
+                      f"c={rev.confidence:.2f} | {rev.rationale[:80]}")
 
         # ── c. 临时应用 ──
         temp_tree = deepcopy(tree)

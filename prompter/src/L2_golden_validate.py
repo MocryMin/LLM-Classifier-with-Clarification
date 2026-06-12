@@ -85,7 +85,7 @@ def _run_golden_set(
     prompt_text: str,
     gold_samples: list[dict],
     max_samples: int | None = None,
-    workers: int = 8,
+    workers: int = 32,
     verbose: bool = False,
 ) -> tuple[float, int, int, list[dict]]:
     """用指定 prompt 并发跑黄金样本集.
@@ -274,6 +274,22 @@ def generate_golden_report(
     return "\n".join(lines)
 
 
+def _format_app_content(app: EnrichApplication) -> str:
+    """格式化申请内容供 verbose 输出."""
+    if app.operation == "group_description":
+        desc = app.content.get("description", "")
+        return f"content: {desc}"
+    elif app.operation == "sample_add":
+        title = app.content.get("title", "?")
+        conv = app.content.get("conversation", "")[:60]
+        return f"title: {title} | conv: {conv}..."
+    elif app.operation == "sample_delete":
+        target = app.content.get("target_display_id", "?")
+        contradiction = app.content.get("contradiction_detail", "")[:60]
+        return f"delete {target}: {contradiction}..."
+    return ""
+
+
 # ═══════════════════════════════════════════════════════════
 # 贪心接受
 # ═══════════════════════════════════════════════════════════
@@ -283,7 +299,7 @@ def greedy_accept(
     applications: list[EnrichApplication],
     gold_samples: list[dict],
     max_samples: int | None = None,
-    workers: int = 8,
+    workers: int = 32,
     verbose: bool = False,
 ) -> tuple[list[EnrichApplication], list[EnrichApplication], list[dict]]:
     """贪心接受申请.
@@ -333,10 +349,16 @@ def greedy_accept(
         print(
             f"[golden] [{i+1}/{len(applications)}] {op_label} "
             f"(confidence={app.confidence:.2f}): "
-            f"{app.rationale[:60]}",
+            f"{app.rationale[:80]}",
             end=" ",
             flush=True,
         )
+
+        if verbose:
+            # 打印申请内容
+            content_preview = _format_app_content(app)
+            if content_preview:
+                print(f"\n         {content_preview}", end="", flush=True)
 
         # 临时应用
         temp_tree = deepcopy(tree)
