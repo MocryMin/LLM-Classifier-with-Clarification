@@ -71,7 +71,7 @@ _l3_entry = _load_module("L3_entry", _SRC / "L3_entry.py")
 XLSX_DIR   = _HERE / "xlsx"
 GOLDEN_DIR = _HERE / "golden"
 OUTPUT_DIR = _HERE / "output"
-V3_PROMPT  = _PROJECT_ROOT / "v3" / "L1_router_v3.txt"
+V3_PROMPT  = _PROJECT_ROOT / "v3" / "prompt.txt"
 
 
 # ═══════════════════════════════════════════════════════════
@@ -187,7 +187,7 @@ def build_case2(
             print(f"  或使用 --golden <path> 指定.")
             print(f"  或使用 --no-llm 跳过 LLM 调优 (仅输出 L1 prompt).")
 
-    _build_pipeline(xlsx_p, mode, golden_xlsx=golden_p, workers=workers, max_samples=max_samples, verbose=verbose)
+    _build_pipeline(xlsx_p, mode, golden_xlsx=golden_p, workers=workers, max_samples=max_samples, verbose=verbose, skip_llm=no_llm)
 
     if deploy:
         _do_deploy()
@@ -204,6 +204,7 @@ def _build_pipeline(
     workers: int = 32,
     max_samples: int | None = None,
     verbose: bool = False,
+    skip_llm: bool = False,
 ) -> dict:
     """统一流水线: L0→L0.5→L1→(L2)→(L3)."""
 
@@ -247,7 +248,14 @@ def _build_pipeline(
     l1_path.write_text(l1_prompt, encoding="utf-8")
     print(f"       [OK] L1 prompt ({len(l1_prompt)} chars) -> {l1_path.name}")
 
-    # ── 如果无 golden, 到此为止 ──
+    # ── 如果无 golden 或 skip_llm, 到此为止 ──
+    if skip_llm:
+        print(f"\n[提示] --no-llm 开启, 跳过 LLM 调优. 最终产物: {l1_path.name}")
+        _write_build_report(out_dir, xlsx_name, mode, row_count, intent_count, group_count,
+                          len(l1_prompt), has_llm=False)
+        print(f"\n  最终 prompt: {l1_path}")
+        return {}
+
     golden_json: Path | None = None
     has_llm = False
 
@@ -556,6 +564,25 @@ if __name__ == "__main__":
 
     if args.xlsx:
         build_case2(args.xlsx, mode=args.mode, golden_xlsx=args.golden,
+                    no_llm=args.no_llm, deploy=args.deploy,
+                    workers=args.workers, max_samples=args.max_samples,
+                    verbose=args.verbose)
+    elif args.no_llm or args.deploy or args.golden or args.workers != 16 or args.max_samples is not None:
+        # 有 CLI flag 但没有 --xlsx → 自动找 xlsx 并接管
+        XLSX_DIR.mkdir(parents=True, exist_ok=True)
+        xlsx_files = sorted(
+            p for p in XLSX_DIR.iterdir()
+            if p.suffix.lower() in (".xlsx", ".xls") and not p.name.startswith("~")
+        )
+        if not xlsx_files:
+            print(f"[错误] prompter/xlsx/ 下没有 xlsx 文件.")
+            sys.exit(1)
+        if len(xlsx_files) > 1:
+            print(f"[错误] prompter/xlsx/ 下有多个文件，使用 --xlsx 指定.")
+            sys.exit(1)
+        auto_xlsx = str(xlsx_files[0])
+        print(f"[自动检测] {xlsx_files[0].name}")
+        build_case2(auto_xlsx, mode=args.mode, golden_xlsx=args.golden,
                     no_llm=args.no_llm, deploy=args.deploy,
                     workers=args.workers, max_samples=args.max_samples,
                     verbose=args.verbose)

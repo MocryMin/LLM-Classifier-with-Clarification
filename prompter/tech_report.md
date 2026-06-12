@@ -43,12 +43,12 @@ serializer.py将填写后的语法树展开为完整的文本prompt。
 
 Step1-3都是无LLM的确定性操作，旨在将xlsx无损地格式化，并按照某种组织方式**在不进行语义操作**的情况下组织为prompt.
 
-Step4：**enrich**：喂LLM中间prompt，LLM只能返回"申请"，不能直接改prompt。相关代码：L2_enrich.py + L2_enrich_inputs.py + L2_enrich_application.py
+Step4：**enrich**：将Step3产出的中间prompt拆分并喂LLM，LLM只能返回若干"润色申请"，不直接改prompt。相关代码：L2_enrich.py + L2_enrich_inputs.py + L2_enrich_application.py
 
 **enrich内容产生原则**：
 - **申请制**：enricher只给建议，不直接写prompt。每条申请含confidence(0-1)和rationale
 - **局部受限操作**：enrich层LLM可进行的操作范围和操作内容严格限定。只能在两处进行共3种修改：group_description（总结L1意图描述）、sample_add（加few-shot）、sample_delete（删现有矛盾的few-shot sample）。确保enrich的“微调”本质，由确定性的受限操作控制LLM的不确定性。
-- **最小上下文输入粒度**：进行description enrich的LLM只能看到该L1意图及其的子意图字段；进行sample操作的LLM不能看到原prompt中SOP、Constraints字段。减少噪声和注意力稀释。
+- **最小上下文输入粒度**：进行description enrich的LLM只能看到该L1意图及其的子意图字段；进行sample操作的LLM不能看到原prompt中SOP、Constraints字段。减少噪声和注意力稀释，防止过拟合。
 - **退出门**。LLM没把握就严格输出特定空字符。减少强行输出导致的幻觉。
 
 **enrich申请的接受方案**：
@@ -124,3 +124,5 @@ serialize() → 将语法树编译为可读prompt文本，得到L2层最终产�
 3、**添加区分规则**：对于某个意图的描述，给出其与另一条易混淆的意图的区分规则。
 
 以上微调操作旨在确保在”不产生全局破坏“的条件下，打磨部分意图判定边界。
+
+其他注意：Step4-5由于涉及LLM，为了测试集上表现的稳定性，防止LLM本身的回答震荡影响对enrich和微调效果的判断，建议设置temp=0。

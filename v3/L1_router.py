@@ -20,7 +20,7 @@ client = OpenAI(
     base_url="https://api.deepseek.com",
 )
 
-_PROMPT_FILE = os.path.join(os.path.dirname(__file__), "L1_router_v3.txt")
+_PROMPT_FILE = os.path.join(os.path.dirname(__file__), "prompt.txt")
 _prompt_template: str | None = None
 
 
