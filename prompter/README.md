@@ -4,7 +4,7 @@
 
 ---
 
-## 小白快速上手
+## 快速上手
 
 ### 你只需要 3 步
 
@@ -58,6 +58,12 @@ python build.py --xlsx xlsx/0604.xlsx --golden golden/my_test.xlsx
 
 # 编译完直接部署到 v3/
 python build.py --xlsx xlsx/0604.xlsx --deploy
+
+# 调整并发数（默认16）
+python build.py --xlsx xlsx/0604.xlsx --workers 16
+
+# 快速调试：只跑前10条黄金样本
+python build.py --xlsx xlsx/0604.xlsx --max-samples 10
 
 # 查看可用文件
 python build.py --list

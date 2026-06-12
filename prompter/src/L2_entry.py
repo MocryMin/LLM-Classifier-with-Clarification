@@ -20,7 +20,7 @@ Co-agent 可直接调用 run_l2_pipeline()，传入 clean JSON 路径即可完�
         registry="prompter/temp/0604/scene_table_clean.json",
         mode="full",
         golden_samples="prompter/test/golden_samples.json",
-        workers=8,
+        workers=32,
     )
 
     # result["output_prompt"]        → 最终 prompt 文本 (面向用户/LLM)
@@ -58,7 +58,7 @@ def run_l2_pipeline(
     artifact: PromptArtifact | None = None,  # 可传入已有 artifact
     golden_samples: str | Path | None = None,
     model: str = "deepseek-v4-pro",
-    workers: int = 8,
+    workers: int = 32,
     max_golden_samples: int | None = None,
     api_key: str | None = None,
     output_prompt: str | Path | None = None,

@@ -157,7 +157,7 @@ def build_case2(
     golden_xlsx: str | None = None,
     no_llm: bool = False,
     deploy: bool = False,
-    workers: int = 16,
+    workers: int = 32,
     max_samples: int | None = None,
     verbose: bool = False,
 ) -> None:
@@ -201,7 +201,7 @@ def _build_pipeline(
     xlsx_path: Path,
     mode: str,
     golden_xlsx: Path | None = None,
-    workers: int = 16,
+    workers: int = 32,
     max_samples: int | None = None,
     verbose: bool = False,
 ) -> dict:
@@ -523,8 +523,8 @@ if __name__ == "__main__":
     parser.add_argument("--golden", "-g", help="黄金样本 xlsx 路径")
     parser.add_argument("--no-llm", action="store_true",
                        help="跳过 LLM 调优 (仅输出 L1 prompt)")
-    parser.add_argument("--workers", "-w", type=int, default=16,
-                       help="黄金验证并发 worker 数 (默认: 16)")
+    parser.add_argument("--workers", "-w", type=int, default=32,
+                       help="黄金验证并发 worker 数 (默认: 32)")
     parser.add_argument("--max-samples", type=int, default=None,
                        help="快速调试用: 限制黄金验证样本数 (默认: 全量)")
     parser.add_argument("--verbose", "-v", action="store_true",

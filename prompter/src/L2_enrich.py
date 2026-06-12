@@ -6,7 +6,7 @@ enrich.py — enrich 主逻辑
 不修改文法树.
 
 两次 LLM 调用:
-  调用 1 (×N): group_description  — 每个 L1 分组生成一句说�?
+  调用 1 (×N): group_description  — 每个 L1 分组生成一句说明
   调用 2 (×1): sample_review      — add+delete 合并, 一次调用
 
 用法:
@@ -82,7 +82,7 @@ def _call_llm(
     Args:
         system: system prompt
         user: user prompt (结构化上下文)
-        output_schema: JSON schema 描�?
+        output_schema: JSON schema 描述期望的输出结构, LLM 需严格遵守
         model: 模型名称
         max_tokens: 最大输出 token
         api_key: API key (默认从环境变量读取)
@@ -96,7 +96,7 @@ def _call_llm(
     schema_str = json.dumps(output_schema, ensure_ascii=False, indent=2)
     full_user = (
         f"{user}\n\n"
-        f"请严格按照以下 JSON 格式输出 (不要输出其他文�?:\n"
+        f"请严格按照以下 JSON 格式输出 (不要输出其他文本:\n"
         f"```json\n{schema_str}\n```"
     )
 
@@ -135,7 +135,7 @@ def _extract_json(text: str) -> dict | None:
         except json.JSONDecodeError:
             pass
 
-    # 策略2: 花括号边�?
+    # 策略2: 花括号边
     first = t.find("{")
     last = t.rfind("}")
     if first != -1 and last != -1 and last > first:
@@ -423,10 +423,10 @@ def enrich(
 ) -> list[EnrichApplication]:
     """执行全部 enrich 操作, 返回按 confidence 排序的申请列表.
 
-    不修改文法树, 只返回申请列�?.
+    不修改文法树, 只返回申请列表.
 
     Args:
-        tree: 文法树根节�?
+        tree: 文法树根节点
         model: LLM 模型名称
         verbose: 打印进度信息
         api_key: API key (默认从环境变量读取)
