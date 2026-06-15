@@ -64,7 +64,7 @@ def create_conversation(messages: Optional[list[dict]] = None, meta: Optional[di
         'title': '新建对话',
         'created_at': now,
         'updated_at': now,
-        'meta': meta or {'l0_threshold': 0.7},
+        'meta': meta or {},
         'messages': messages or [],
     }
     _filepath(conv_id).write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding='utf-8')

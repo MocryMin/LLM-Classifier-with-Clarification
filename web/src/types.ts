@@ -4,131 +4,24 @@ export interface Message {
   content: string;
 }
 
-// ─── Entrance result types ──────────────────────────────────
-export interface L0Tags {
-  manual: number;
-  angry: number;
-  sad: number;
-  urgent: number;
-  non_biz: number;
-}
-
-export interface Case0Data {
-  call_body: string;
-  situation_brief: string;
-  user_comfort: string;
-  l0_tags: L0Tags;
-}
-
+// ─── Entrance result types (V3 only) ────────────────────────
 export interface IntentResult {
   l1: string;
   l2: string;
   confidence: number;
 }
 
-export interface SlotDef {
-  name: string;
-  description: string;
-  options: string[];
-}
-
-export interface Slots {
-  all_slots: SlotDef[];
-  filled_slots: Record<string, string>;
-  missing_slots: string[];
-}
-
-export interface Operation {
-  type: 'direct_reply' | 'route_to_subsidiary' | 'fallback';
-  detail: string;
-}
-
-export interface Case1Data {
-  primary_intent: IntentResult;
-  top_candidates: Array<{ l1: string; l2: string; probability: number }>;
-  needs_clarification: boolean;
-  slots?: Slots;              // V3 removed
-  operation?: Operation;      // V3 removed
-  user_output: string;
-  reason: string;
-  // V2 新增
-  faq_matched?: boolean;
-  audit_required?: boolean;
-  recommendation?: Record<string, unknown> | null;
-  tool_calls?: string[];
-}
-
-// ─── V2: Tag Disposition & Decision Trail ───────────────────
-export interface TagDisposition {
-  action: string;
-  probability: number;
-  triggered: boolean;
-}
-
-export interface DecisionTrailItem {
-  step: string;
-  input_value: string;
-  result: string;
-  reason: string;
-}
-
-export interface EntranceResultCase0 {
-  case: 0;
-  risk_level?: string | null;        // V2
-  response_mode?: string;            // V2
-  tag_dispositions?: Record<string, TagDisposition>;  // V2
-  decision_trail?: DecisionTrailItem[];  // V2
-  data: Case0Data;
-}
-
-export interface EntranceResultCase1 {
+export interface EntranceResult {
   case: 1;
-  risk_level?: string | null;        // V2
-  response_mode?: string;            // V2
-  tag_dispositions?: Record<string, TagDisposition>;  // V2
-  decision_trail?: DecisionTrailItem[];  // V2
-  data: Case1Data;
-}
-
-// V2: case=2 紧急直通
-export interface EntranceResultCase2 {
-  case: 2;
-  risk_level: null;
-  response_mode: string;
-  tag_dispositions: Record<string, TagDisposition>;
-  decision_trail: DecisionTrailItem[];
+  response_mode?: string;
   data: {
+    primary_intent: IntentResult;
+    top_candidates: Array<{ l1: string; l2: string; probability: number }>;
+    needs_clarification: boolean;
     user_output: string;
-    escalate_to_human: boolean;
-    primary_intent?: IntentResult;
-    tool_calls?: string[];
-    reason?: string;
+    reason: string;
   };
 }
-
-export type EntranceResult = EntranceResultCase0 | EntranceResultCase1 | EntranceResultCase2;
-
-// ─── Protocol: open-ended result for future V3/V4 compatibility ──
-// The GUI auto-discovers all fields from EntranceResult.
-// V3/V4 kernels just add new top-level keys or data sub-keys;
-// the GUI renders them without any code changes.
-//
-// Naming conventions for automatic renderer selection:
-//   *_level         → colored risk badge (low/medium/high)
-//   *_mode          → mode badge
-//   *_tags, *_dispositions → key-value table
-//   *_trail         → step-by-step timeline
-//   *_required, *_matched → boolean badge
-//   boolean values  → green/red badge
-//   object/array    → expandable JSON tree
-//   everything else → plain text
-//
-// Priority (lower = first in display):
-//   0-9:   pipeline meta (case, risk_level, response_mode)
-//   10-29: tag dispositions, decision trails
-//   30-49: unclassified top-level keys
-//   100-199: data fields from case=0 (escalation)
-//   200-299: data fields from case=1/2 (L1 result)
 
 // ─── UI message unit (message + optional entrance result) ────
 export interface MessageUnit {
@@ -140,7 +33,7 @@ export interface MessageUnit {
 
 // ─── Conversation ────────────────────────────────────────────
 export interface ConversationMeta {
-  l0_threshold: number;
+  l0_threshold?: number;
   last_case?: number;
 }
 

@@ -1,6 +1,6 @@
 """
-server/main.py — FastAPI backend for the 智能管家 chat playground.
-Wraps entrance.py with SSE streaming chat endpoint.
+server/main.py — FastAPI backend for the V3 chat playground.
+Wraps v3.entrance with SSE streaming chat endpoint.
 """
 import os
 import sys
@@ -9,10 +9,9 @@ import time
 import asyncio
 import traceback
 
-# Ensure entrance and its dependencies are importable
+# 项目根目录加入 sys.path, 让 v3 包可被 import
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, _PROJECT_ROOT)  # project root → v3/, src/ both reachable
-sys.path.insert(0, os.path.join(_PROJECT_ROOT, 'src'))
+sys.path.insert(0, _PROJECT_ROOT)
 
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -41,7 +40,7 @@ async def lifespan(app):
     cleanup_staging()
 
 
-app = FastAPI(title="智能管家 Chat Playground", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="智能管家 V3 Chat Playground", version="3.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -52,33 +51,24 @@ app.add_middleware(
 )
 
 
-class ChatRequest(BaseModel):
-    messages: list[dict] = Field(..., description="OpenAI format messages")
-    l0_threshold: float = Field(0.7, ge=0.0, le=1.0, description="L0 intercept threshold")
-    debug: bool = Field(False, description="Enable debug logging")
-
-
+# ─── Health ────────────────────────────────────────────────
 @app.get("/api/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "version": "v3"}
 
 
-async def _run_entrance(messages: list[dict], l0_threshold: float, debug: bool):
-    """Run V2 entrance in a thread to avoid blocking the event loop."""
-    from entrance import entrance
-    loop = asyncio.get_running_loop()
-    return await asyncio.wait_for(
-        loop.run_in_executor(None, lambda: entrance(messages, l0_threshold, debug)),
-        timeout=120,
-    )
+# ─── V3 Chat (SSE streaming) ───────────────────────────────
+class ChatRequest(BaseModel):
+    messages: list[dict] = Field(..., description="OpenAI format messages")
+    debug: bool = Field(False, description="Enable debug logging")
 
 
 async def _run_v3_entrance(messages: list[dict], debug: bool):
     """Run V3 entrance in a thread to avoid blocking the event loop."""
-    from v3.entrance import entrance as v3_entrance
+    from v3.entrance import entrance
     loop = asyncio.get_running_loop()
     return await asyncio.wait_for(
-        loop.run_in_executor(None, lambda: v3_entrance(messages, debug)),
+        loop.run_in_executor(None, lambda: entrance(messages, debug)),
         timeout=120,
     )
 
@@ -86,62 +76,23 @@ async def _run_v3_entrance(messages: list[dict], debug: bool):
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
     """
-    SSE streaming chat endpoint.
+    V3 SSE streaming chat endpoint.
+    Single-stage L1 intent routing.
+
     Events:
-      - progress: {stage}  -- L0/L1 progress
+      - progress: {stage}
       - result:   complete entrance return value
       - error:    {message}
     """
     async def event_stream():
         try:
-            # Progress: L0 starting
-            yield f"event: progress\ndata: {json.dumps({'stage': 'l0_start'}, ensure_ascii=False)}\n\n"
-
-            start_time = time.time()
-            result = await _run_entrance(request.messages, request.l0_threshold, request.debug)
-            elapsed = time.time() - start_time
-
-            # Progress: complete
-            stage = "escalation" if result["case"] == 0 else "l1"
-            yield f"event: progress\ndata: {json.dumps({'stage': stage, 'elapsed': round(elapsed, 1)}, ensure_ascii=False)}\n\n"
-
-            # Final result
-            yield f"event: result\ndata: {json.dumps(result, ensure_ascii=False)}\n\n"
-
-        except Exception as e:
-            yield f"event: error\ndata: {json.dumps({'message': str(e), 'traceback': traceback.format_exc()}, ensure_ascii=False)}\n\n"
-
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
-
-
-class ChatV3Request(BaseModel):
-    messages: list[dict] = Field(..., description="OpenAI format messages")
-    debug: bool = Field(False, description="Enable debug logging")
-
-
-@app.post("/api/chat/v3")
-async def chat_v3(request: ChatV3Request):
-    """
-    V3 SSE streaming chat endpoint.
-    Single-stage L1 intent routing only — no L0/L2/L3.
-    """
-    async def event_stream():
-        try:
-            yield f"event: progress\ndata: {json.dumps({'stage': 'v3_l1_start'}, ensure_ascii=False)}\n\n"
+            yield f"event: progress\ndata: {json.dumps({'stage': 'l1_start'}, ensure_ascii=False)}\n\n"
 
             start_time = time.time()
             result = await _run_v3_entrance(request.messages, request.debug)
             elapsed = time.time() - start_time
 
-            yield f"event: progress\ndata: {json.dumps({'stage': 'v3_l1', 'elapsed': round(elapsed, 1)}, ensure_ascii=False)}\n\n"
+            yield f"event: progress\ndata: {json.dumps({'stage': 'l1', 'elapsed': round(elapsed, 1)}, ensure_ascii=False)}\n\n"
 
             yield f"event: result\ndata: {json.dumps(result, ensure_ascii=False)}\n\n"
 

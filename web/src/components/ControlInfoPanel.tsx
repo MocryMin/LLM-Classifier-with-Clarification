@@ -46,20 +46,11 @@ function detectHint(key: string, value: unknown): RenderHint {
 function getPriority(key: string, isTopLevel: boolean): number {
   const PRIORITY: Record<string, number> = {
     // Pipeline meta
-    case: 0, risk_level: 1, response_mode: 2,
-    // L0 tags
-    tag_dispositions: 10, l0_tags: 11,
-    // Decision audit
-    decision_trail: 20,
-    // Escalation (case=0 data)
-    call_body: 100, situation_brief: 101, user_comfort: 102,
-    // L1 result (case=1/2 data)
+    case: 0, response_mode: 2,
+    // L1 result (data)
     primary_intent: 200, top_candidates: 201,
-    needs_clarification: 202, slots: 203, operation: 204,
+    needs_clarification: 202,
     user_output: 205, reason: 206,
-    // V2 data extras
-    faq_matched: 210, audit_required: 211, escalate_to_human: 212,
-    recommendation: 213, tool_calls: 214,
   }
   if (key in PRIORITY) return PRIORITY[key]
   // Unknown top-level keys go between pipeline meta and data
@@ -69,27 +60,13 @@ function getPriority(key: string, isTopLevel: boolean): number {
 
 // ─── Help text ──────────────────────────────────────────────────
 const HELP: Record<string, string> = {
-  case: '路由结果。0=L0拦截升级 / 1=正常路由 / 2=紧急直通',
-  risk_level: '风险评估等级。low=低风险(生成式回复) / medium=中风险(FAQ优先+审核) / high=高风险(FAQ+人工)',
-  response_mode: '回复模式。V2: generative/faq_first/faq_only_human/direct_guide | V3: v3=统一路由',
-  tag_dispositions: 'L0标签处置动作。escalate=升级人工 / risk_bump=风险+1 / skip_risk=跳过评估 / tone_soften=语气调整 / redirect=引导回业务',
-  decision_trail: '风险评估决策链。每步规则的输入→输出→理由，可审计追溯',
-  call_body: '人工介入接口调用标记',
-  situation_brief: '向人工坐席的情景快速披露',
-  user_comfort: '面向用户的安抚话语',
-  l0_tags: 'L0五个标签的原始概率值',
+  case: '路由结果。1=正常路由',
+  response_mode: '回复模式。v3=V3统一路由',
   primary_intent: 'L1分类的主导意图（一级/二级/置信度）',
   top_candidates: '概率>0.1的候选意图列表',
   needs_clarification: '是否需要向用户发起澄清',
-  slots: 'V2槽位信息。all_slots=全部 / filled_slots=已填 / missing_slots=缺失。V3不收集槽位',
-  operation: 'V2操作决策。direct_reply=集团直接答复 / route_to_subsidiary=路由子公司(含tool_call) / fallback=兜底。V3路由信息在user_output的###call中',
-  user_output: '面向用户的输出文本',
+  user_output: '面向用户的输出文本（含 ###call(L1-L2) 路由标记）',
   reason: '判断依据',
-  faq_matched: 'FAQ是否命中（当前FAQ库为空）',
-  audit_required: '是否需要人工审核',
-  escalate_to_human: '是否转人工坐席',
-  recommendation: '问答后推荐（占位）',
-  tool_calls: '提取的 ###tool_call(api_name) 列表',
 }
 
 function getHelp(key: string): string {
@@ -446,15 +423,9 @@ function ControlField({ field, forceExpand }: { field: FieldDef; forceExpand?: b
 // ============================================================
 
 function CaseLabel({ result }: { result: EntranceResult }) {
-  const labels: Record<number, string> = {
-    0: 'L0 拦截升级',
-    1: 'L1 意图路由',
-    2: '紧急直通',
-  }
-  // V3 case=1 uses response_mode="v3" to distinguish
   const mode = (result as Record<string, unknown>).response_mode
   if (mode === 'v3') return <span>V3 意图路由</span>
-  return <span>{labels[result.case] || `case=${result.case}`}</span>
+  return <span>case={result.case}</span>
 }
 
 interface Props {
@@ -467,7 +438,6 @@ export default function ControlInfoPanel({ result }: Props) {
 
   // Extract badge-level info for header
   const resultObj = result as Record<string, unknown>
-  const riskLevel = typeof resultObj.risk_level === 'string' ? resultObj.risk_level : null
   const responseMode = typeof resultObj.response_mode === 'string' ? resultObj.response_mode : null
 
   return (
@@ -476,7 +446,6 @@ export default function ControlInfoPanel({ result }: Props) {
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-700 bg-gray-900">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-gray-400"><CaseLabel result={result} /></span>
-          {riskLevel && <RiskBadge level={riskLevel} />}
           {responseMode && <ModeBadge mode={responseMode} />}
         </div>
         <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setAllExpanded(!allExpanded)}>

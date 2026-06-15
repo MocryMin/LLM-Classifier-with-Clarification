@@ -21,9 +21,7 @@ interface AppState {
   // UI
   leftSidebarOpen: boolean;
   rightSidebarOpen: boolean;
-  l0Threshold: number;
   debugMode: boolean;
-  useV3: boolean;
 
   // Actions
   sendMessage: (content: string) => Promise<void>;
@@ -49,9 +47,7 @@ interface AppState {
   // UI toggles
   toggleLeftSidebar: () => void;
   toggleRightSidebar: () => void;
-  setL0Threshold: (v: number) => void;
   setDebugMode: (v: boolean) => void;
-  setUseV3: (v: boolean) => void;
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -65,9 +61,7 @@ export const useStore = create<AppState>((set, get) => ({
   persistedFiles: [],
   leftSidebarOpen: true,
   rightSidebarOpen: true,
-  l0Threshold: 0.7,
   debugMode: false,
-  useV3: false,
 
   sendMessage: async (content: string) => {
     const state = get();
@@ -94,7 +88,7 @@ export const useStore = create<AppState>((set, get) => ({
     });
     api.saveConversation(convId, {
       messages: apiMessages,
-      meta: { l0_threshold: state.l0Threshold },
+      meta: {},
       results: Object.keys(saveResults).length > 0 ? saveResults : undefined,
     }).catch(() => {});
 
@@ -122,7 +116,7 @@ export const useStore = create<AppState>((set, get) => ({
       allResults[String(apiMessages.length)] = result;
       api.saveConversation(targetConvId, {
         messages: allMessages,
-        meta: { l0_threshold: state.l0Threshold },
+        meta: {},
         results: allResults,
       }).catch(() => {});
     };
@@ -130,11 +124,7 @@ export const useStore = create<AppState>((set, get) => ({
       set({ isLoading: false, error: error.message, progress: null });
     };
 
-    if (state.useV3) {
-      api.chatV3(apiMessages, state.debugMode, onProgress, onResult, onError);
-    } else {
-      api.chatSSE(apiMessages, state.l0Threshold, state.debugMode, onProgress, onResult, onError);
-    }
+    api.chatSSE(apiMessages, state.debugMode, onProgress, onResult, onError);
   },
 
   editMessage: (id: string, newContent: string) => {
@@ -190,7 +180,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (convId) {
       api.saveConversation(convId, {
         messages: msgsToSend,
-        meta: { l0_threshold: state.l0Threshold },
+        meta: {},
       }).catch(() => {});
     }
 
@@ -215,7 +205,7 @@ export const useStore = create<AppState>((set, get) => ({
         allResults[String(msgsToSend.length)] = result;
         api.saveConversation(targetConvId, {
           messages: allMessages,
-          meta: { l0_threshold: state.l0Threshold },
+          meta: {},
           results: allResults,
         }).catch(() => {});
       }
@@ -224,11 +214,7 @@ export const useStore = create<AppState>((set, get) => ({
       set({ isLoading: false, error: error.message, progress: null });
     };
 
-    if (state.useV3) {
-      api.chatV3(msgsToSend, state.debugMode, onResendProgress, onResendResult, onResendError);
-    } else {
-      api.chatSSE(msgsToSend, state.l0Threshold, state.debugMode, onResendProgress, onResendResult, onResendError);
-    }
+    api.chatSSE(msgsToSend, state.debugMode, onResendProgress, onResendResult, onResendError);
   },
 
   createNewConversation: async () => {
@@ -251,12 +237,11 @@ export const useStore = create<AppState>((set, get) => ({
     set({
       conversationId: id,
       messages: units,
-      l0Threshold: conv.meta?.l0_threshold ?? get().l0Threshold,
     });
   },
 
   saveCurrentConversation: async () => {
-    const { conversationId, messages, l0Threshold } = get();
+    const { conversationId, messages } = get();
     if (!conversationId) return;
     // Collect entrance results keyed by message index
     const results: Record<string, unknown> = {};
@@ -265,7 +250,7 @@ export const useStore = create<AppState>((set, get) => ({
     });
     await api.saveConversation(conversationId, {
       messages: messages.map(m => m.message),
-      meta: { l0_threshold: l0Threshold },
+      meta: {},
       results: Object.keys(results).length > 0 ? results : undefined,
     });
     get().refreshConversationList();
@@ -332,7 +317,5 @@ export const useStore = create<AppState>((set, get) => ({
 
   toggleLeftSidebar: () => set(s => ({ leftSidebarOpen: !s.leftSidebarOpen })),
   toggleRightSidebar: () => set(s => ({ rightSidebarOpen: !s.rightSidebarOpen })),
-  setL0Threshold: (v) => set({ l0Threshold: v }),
   setDebugMode: (v) => set({ debugMode: v }),
-  setUseV3: (v) => set({ useV3: v }),
 }));

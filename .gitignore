@@ -5,18 +5,13 @@
 __pycache__/
 *.pyc
 
+# Node
+node_modules/
+
 # IDE / temp
 ~$*
-
-# Design docs & drafts
-L1 plan.txt
-understand.md
-intent_data.json
-智能管家_场景设计需求0528.xlsx
-
-# Abandoned 35-agent architecture
-prompt/intent_prompts/
-src/generate_intent_prompts.py
+.vscode/
+.idea/
 
 # Prompter build artifacts
 prompter/output/
@@ -25,13 +20,8 @@ prompter/output/
 v3/L1_router_v3.txt.bak
 
 # Runtime conversation data
-data/conversations/
+data/
 
-# Test samples (only test.xlsx is committed)
-test/test_L0_tag_judge.py
-test/testL0/L0_test_samples.xlsx
-test/testL0/result.xlsx
-test/testL0/results/
-test/testL0/sample/
-test/testL0/generate_samples.py
-test/testL0/testL0.py
+# OS
+Thumbs.db
+.DS_Store
