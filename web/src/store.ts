@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Message, MessageUnit, EntranceResult, ConversationListItem, StagingFile, PersistedFile, ProgressEvent } from './types';
+import type { Message, MessageUnit, EntranceResult, ConversationListItem, ProgressEvent, ParseResult } from './types';
 import { generateId, getMessageText } from './utils';
 import * as api from './api';
 
@@ -15,8 +15,8 @@ interface AppState {
   conversations: ConversationListItem[];
 
   // Workspace
-  stagingFiles: StagingFile[];
-  persistedFiles: PersistedFile[];
+  workspacePath: string;
+  workspaceFiles: api.WorkspaceFile[];
 
   // UI
   leftSidebarOpen: boolean;
@@ -38,11 +38,9 @@ interface AppState {
   refreshConversationList: () => Promise<void>;
 
   // Workspace mgmt
-  importFile: (file: File) => Promise<void>;
-  loadFileToConversation: (stagingId: string) => Promise<void>;
-  removeStagingFile: (stagingId: string) => Promise<void>;
-  refreshStagingFiles: () => Promise<void>;
-  refreshPersistedFiles: () => Promise<void>;
+  setWorkspacePath: (path: string) => Promise<void>;
+  browseWorkspace: () => Promise<void>;
+  loadFileToConversation: (filePath: string) => Promise<void>;
 
   // UI toggles
   toggleLeftSidebar: () => void;
@@ -57,8 +55,8 @@ export const useStore = create<AppState>((set, get) => ({
   progress: null,
   error: null,
   conversations: [],
-  stagingFiles: [],
-  persistedFiles: [],
+  workspacePath: '',
+  workspaceFiles: [],
   leftSidebarOpen: true,
   rightSidebarOpen: true,
   debugMode: false,
@@ -275,14 +273,28 @@ export const useStore = create<AppState>((set, get) => ({
     } catch { /* silently fail */ }
   },
 
-  importFile: async (file: File) => {
-    await api.importToStaging(file);
-    get().refreshStagingFiles();
+  setWorkspacePath: async (path: string) => {
+    await api.setWorkspaceConfig(path);
+    set({ workspacePath: path });
+    get().browseWorkspace();
   },
 
-  loadFileToConversation: async (stagingId: string) => {
-    const parsed = await api.parseFile(stagingId);
-    await api.persistFile(stagingId);
+  browseWorkspace: async () => {
+    try {
+      const { files, path } = await api.browseWorkspace();
+      set({ workspaceFiles: files, workspacePath: path });
+    } catch { /* silently fail */ }
+  },
+
+  loadFileToConversation: async (filePath: string) => {
+    // parse the file directly using the parse-path endpoint
+    const r = await fetch('/api/workspace/parse-path', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: filePath }),
+    });
+    if (!r.ok) throw new Error(`Parse failed: ${r.status}`);
+    const parsed = await r.json() as ParseResult;
     const { id } = await api.createConversation();
     const units: MessageUnit[] = parsed.messages.map(m => ({
       id: generateId(),
@@ -294,25 +306,6 @@ export const useStore = create<AppState>((set, get) => ({
       error: null,
     });
     get().refreshConversationList();
-    get().refreshStagingFiles();
-    get().refreshPersistedFiles();
-  },
-
-  removeStagingFile: async (stagingId: string) => {
-    await api.deleteStagingFile(stagingId);
-    get().refreshStagingFiles();
-  },
-
-  refreshStagingFiles: async () => {
-    try {
-      set({ stagingFiles: await api.listStaging() });
-    } catch { /* silently fail */ }
-  },
-
-  refreshPersistedFiles: async () => {
-    try {
-      set({ persistedFiles: await api.listPersisted() });
-    } catch { /* silently fail */ }
   },
 
   toggleLeftSidebar: () => set(s => ({ leftSidebarOpen: !s.leftSidebarOpen })),

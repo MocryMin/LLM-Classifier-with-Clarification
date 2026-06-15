@@ -8,6 +8,7 @@ import json
 import time
 import asyncio
 import traceback
+from pathlib import Path
 
 # 项目根目录加入 sys.path, 让 v3 包可被 import
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -170,6 +171,19 @@ async def api_set_workspace_config(body: WorkspaceConfigBody):
     return {"path": str(get_workspace_path())}
 
 
+# ─── Browse workspace ───────────────────────────────────────────
+@app.get("/api/workspace/browse")
+async def api_browse_workspace(subdir: str = ""):
+    """List parseable files in the workspace directory."""
+    from workspace_manager import browse_workspace
+    try:
+        files = browse_workspace(subdir)
+        return {"files": files, "path": str(get_workspace_path())}
+    except ValueError as e:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+
 # ─── Staging ────────────────────────────────────────────────────
 @app.post("/api/workspace/import")
 async def api_import_to_staging(file: UploadFile = File(...)):
@@ -221,6 +235,35 @@ async def api_parse_file(body: ParseBody):
 
     raw = staging_path.read_text(encoding='utf-8')
     ext = staging_path.suffix.lower()
+    parser = get_parser_for_content(raw, ext)
+
+    if parser is None:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": f"No parser found for {ext} files"}, status_code=400)
+
+    messages = parser.parse(raw)
+    return {
+        "format": parser.name,
+        "parser_used": parser.display_name,
+        "messages": messages,
+    }
+
+
+# ─── Parse by path ────────────────────────────────────────────
+class ParsePathBody(BaseModel):
+    path: str
+
+
+@app.post("/api/workspace/parse-path")
+async def api_parse_by_path(body: ParsePathBody):
+    """Parse a file directly from a workspace path."""
+    file_path = Path(body.path)
+    if not file_path.exists():
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "File not found"}, status_code=404)
+
+    raw = file_path.read_text(encoding='utf-8')
+    ext = file_path.suffix.lower()
     parser = get_parser_for_content(raw, ext)
 
     if parser is None:

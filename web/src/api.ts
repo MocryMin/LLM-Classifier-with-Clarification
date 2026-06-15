@@ -155,3 +155,16 @@ export async function setWorkspaceConfig(path: string): Promise<void> {
   });
   if (!r.ok) throw new Error(`setWorkspaceConfig failed: ${r.status}`);
 }
+
+export async function browseWorkspace(): Promise<{ files: WorkspaceFile[]; path: string }> {
+  const r = await fetch(`${BASE}/api/workspace/browse`);
+  if (!r.ok) throw new Error(`browseWorkspace failed: ${r.status}`);
+  return r.json();
+}
+
+export interface WorkspaceFile {
+  name: string;
+  path: string;
+  size: number;
+  modified_at: string;
+}

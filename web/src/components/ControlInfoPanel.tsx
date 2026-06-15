@@ -42,7 +42,10 @@ function detectHint(key: string, value: unknown): RenderHint {
   return 'text'
 }
 
-// ─── Priority ordering ─────────────────────────────────────────
+// ─── V3 fields to display (whitelist — only show core intent routing fields) ──
+const V3_DISPLAY_FIELDS = new Set([
+  'primary_intent', 'top_candidates', 'needs_clarification', 'reason',
+])
 function getPriority(key: string, isTopLevel: boolean): number {
   const PRIORITY: Record<string, number> = {
     // Pipeline meta
@@ -88,9 +91,11 @@ function extractFields(result: EntranceResult): FieldDef[] {
   const resultObj = result as Record<string, unknown>
   const data = resultObj.data as Record<string, unknown> | undefined
 
-  // Collect top-level keys (except 'data')
+  // Collect top-level keys (except 'data') — V3 only shows whitelisted data keys
   for (const key of Object.keys(resultObj)) {
     if (key === 'data') continue
+    // Skip top-level meta fields in V3 (case, response_mode, etc.)
+    if (!V3_DISPLAY_FIELDS.has(key) && !(data && key in data)) continue
     const value = resultObj[key]
     fields.push({
       key, label: key, value,
@@ -99,9 +104,10 @@ function extractFields(result: EntranceResult): FieldDef[] {
     })
   }
 
-  // Collect data sub-keys
+  // Collect data sub-keys — only whitelisted
   if (data && typeof data === 'object') {
     for (const key of Object.keys(data)) {
+      if (!V3_DISPLAY_FIELDS.has(key)) continue
       fields.push({
         key, label: key, value: data[key],
         help: getHelp(key),

@@ -123,6 +123,32 @@ def persist_file(staging_id: str) -> dict:
         'modified_at': datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
     }
 
+def browse_workspace(subdir: str = "") -> list[dict]:
+    """List parseable files in the workspace (optionally in a subdirectory).
+
+    Returns list of {name, path, size, modified_at}.
+    """
+    ws = get_workspace_path()
+    target = (ws / subdir).resolve() if subdir else ws
+    # Security: ensure target is within workspace
+    if not str(target).startswith(str(ws)):
+        raise ValueError(f"Path outside workspace: {target}")
+    if not target.exists():
+        return []
+
+    results = []
+    for f in sorted(target.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+        if f.is_file() and f.suffix.lower() in ALLOWED_EXTENSIONS:
+            stat = f.stat()
+            results.append({
+                'name': f.name,
+                'path': str(f),
+                'size': stat.st_size,
+                'modified_at': datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+            })
+    return results
+
+
 def cleanup_staging():
     """Remove all staging files. Called on server shutdown."""
     for f in _staging_dir.iterdir():
