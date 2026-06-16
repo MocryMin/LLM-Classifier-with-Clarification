@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { FolderOpen, RefreshCw, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useStore } from '@/store'
@@ -6,15 +6,20 @@ import type { WorkspaceFile } from '@/api'
 
 export default function WorkspaceSidebar() {
   const { workspacePath, workspaceFiles, setWorkspacePath, browseWorkspace, loadFileToConversation } = useStore()
-  const pathInputRef = useRef<HTMLInputElement>(null)
+  const [inputValue, setInputValue] = useState(workspacePath)
 
   useEffect(() => {
     browseWorkspace()
   }, [browseWorkspace])
 
+  // sync input when store's workspacePath changes (e.g. after browse)
+  useEffect(() => {
+    setInputValue(workspacePath)
+  }, [workspacePath])
+
   const handlePathChange = () => {
-    const newPath = pathInputRef.current?.value?.trim()
-    if (newPath) setWorkspacePath(newPath)
+    const trimmed = inputValue.trim()
+    if (trimmed) setWorkspacePath(trimmed)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -45,9 +50,9 @@ export default function WorkspaceSidebar() {
       {/* Path input */}
       <div className="px-3 py-2 border-b border-gray-800/50">
         <input
-          ref={pathInputRef}
           type="text"
-          defaultValue={workspacePath}
+          value={inputValue}
+          onChange={e => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
           onBlur={handlePathChange}
           placeholder="输入文件夹路径, 回车确认..."

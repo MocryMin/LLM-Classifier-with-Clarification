@@ -24,9 +24,9 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 def get_workspace_path() -> Path:
     global _workspace_path
     if _workspace_path is None:
-        # Default: project_root/data/samples (conversation samples from golden test set)
+        # Default: project_root/data/
         _project_root = Path(__file__).resolve().parents[1]
-        _workspace_path = _project_root / 'data' / 'samples'
+        _workspace_path = _project_root / 'data'
         _workspace_path.mkdir(parents=True, exist_ok=True)
     _workspace_path.mkdir(parents=True, exist_ok=True)
     return _workspace_path
